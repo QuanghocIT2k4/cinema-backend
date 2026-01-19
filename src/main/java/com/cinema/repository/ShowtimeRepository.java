@@ -23,9 +23,8 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, Long> {
     // Tìm suất chiếu theo phòng (dùng relationship)
     List<Showtime> findByRoom_Id(Long roomId);
     
-    // Tìm suất chiếu theo ngày
-    @Query("SELECT s FROM Showtime s WHERE DATE(s.startTime) = DATE(:date)")
-    List<Showtime> findByDate(@Param("date") LocalDateTime date);
+    // Tìm suất chiếu theo ngày (range [startOfDay, endOfDay])
+    List<Showtime> findByStartTimeBetween(LocalDateTime startOfDay, LocalDateTime endOfDay);
     
     // Kiểm tra xung đột suất chiếu trong cùng phòng
     @Query("SELECT s FROM Showtime s WHERE s.room.id = :roomId " +

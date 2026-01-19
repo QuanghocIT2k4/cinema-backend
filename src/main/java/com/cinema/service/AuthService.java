@@ -1,9 +1,10 @@
 package com.cinema.service;
 
-import com.cinema.model.dto.AuthResponse;
-import com.cinema.model.dto.LoginRequest;
-import com.cinema.model.dto.RegisterRequest;
-import com.cinema.model.dto.UserResponse;
+import com.cinema.model.dto.request.ChangePasswordRequest;
+import com.cinema.model.dto.request.LoginRequest;
+import com.cinema.model.dto.request.RegisterRequest;
+import com.cinema.model.dto.response.AuthResponse;
+import com.cinema.model.dto.response.UserResponse;
 import com.cinema.model.entity.User;
 import com.cinema.model.enums.UserRole;
 import com.cinema.model.enums.UserStatus;
@@ -108,14 +109,55 @@ public class AuthService {
             throw new RuntimeException("Chưa đăng nhập");
         }
         
-        String username = authentication.getName();
+        // Lấy username từ UserDetails nếu có (từ CustomUserDetails), nếu không thì lấy từ authentication.getName()
+        final String username;
+        if (authentication.getPrincipal() instanceof org.springframework.security.core.userdetails.UserDetails) {
+            org.springframework.security.core.userdetails.UserDetails userDetails = 
+                (org.springframework.security.core.userdetails.UserDetails) authentication.getPrincipal();
+            username = userDetails.getUsername();
+        } else {
+            username = authentication.getName();
+        }
         
         // Tìm User trong database
         User user = userRepository.findByUsername(username)
-            .orElseThrow(() -> new RuntimeException("User không tồn tại"));
+            .orElseThrow(() -> new RuntimeException("User không tồn tại với username: " + username));
         
         // Convert sang UserResponse
         return convertToUserResponse(user);
+    }
+
+    /**
+     * Đổi mật khẩu cho user hiện tại
+     */
+    @Transactional
+    public void changePassword(ChangePasswordRequest request) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new RuntimeException("Chưa đăng nhập");
+        }
+
+        final String username;
+        if (authentication.getPrincipal() instanceof org.springframework.security.core.userdetails.UserDetails userDetails) {
+            username = userDetails.getUsername();
+        } else {
+            username = authentication.getName();
+        }
+
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User không tồn tại với username: " + username));
+
+        if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
+            throw new RuntimeException("Mật khẩu cũ không đúng");
+        }
+
+        if (request.getNewPassword().equals(request.getOldPassword())) {
+            throw new RuntimeException("Mật khẩu mới phải khác mật khẩu cũ");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
     }
     
     /**

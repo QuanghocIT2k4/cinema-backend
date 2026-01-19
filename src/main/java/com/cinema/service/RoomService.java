@@ -1,23 +1,26 @@
 package com.cinema.service;
 
-import com.cinema.model.dto.RoomCreateRequest;
-import com.cinema.model.dto.RoomResponse;
-import com.cinema.model.dto.RoomUpdateRequest;
-import com.cinema.model.dto.SeatResponse;
+import com.cinema.model.dto.request.RoomRequest;
+import com.cinema.model.dto.response.RoomResponse;
 import com.cinema.model.entity.Cinema;
 import com.cinema.model.entity.Room;
 import com.cinema.model.entity.Seat;
 import com.cinema.model.enums.SeatType;
+import com.cinema.model.enums.UserRole;
 import com.cinema.repository.CinemaRepository;
 import com.cinema.repository.RoomRepository;
 import com.cinema.repository.SeatRepository;
+import com.cinema.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Service xử lý logic CRUD Room
@@ -31,43 +34,61 @@ public class RoomService {
     private final SeatRepository seatRepository;
     
     /**
-     * Lấy danh sách Room (có thể filter theo cinemaId)
+     * Kiểm tra user hiện tại có phải Admin không
      */
-    public List<RoomResponse> getAllRooms(Long cinemaId) {
-        List<Room> rooms;
-        if (cinemaId != null) {
-            rooms = roomRepository.findByCinemaId(cinemaId);
-        } else {
-            rooms = roomRepository.findAll();
+    private void checkAdminRole() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AccessDeniedException("Chưa đăng nhập");
         }
         
-        return rooms.stream()
-            .map(this::convertToRoomResponse)
-            .collect(Collectors.toList());
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        if (userDetails.getUser().getRole() != UserRole.ADMIN) {
+            throw new AccessDeniedException("Chỉ Admin mới có quyền thực hiện thao tác này");
+        }
     }
     
     /**
-     * Lấy chi tiết 1 Room (bao gồm danh sách seats)
+     * Lấy tất cả rooms (có phân trang)
+     */
+    public Page<RoomResponse> getAllRooms(Pageable pageable) {
+        return roomRepository.findAll(pageable)
+                .map(this::convertToResponse);
+    }
+    
+    /**
+     * Lấy rooms theo cinema ID
+     */
+    public List<RoomResponse> getRoomsByCinemaId(Long cinemaId) {
+        return roomRepository.findByCinemaId(cinemaId)
+                .stream()
+                .map(this::convertToResponse)
+                .toList();
+    }
+    
+    /**
+     * Lấy room theo ID
      */
     public RoomResponse getRoomById(Long id) {
         Room room = roomRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Room không tồn tại"));
-        return convertToRoomResponse(room);
+                .orElseThrow(() -> new RuntimeException("Room không tồn tại với id: " + id));
+        return convertToResponse(room);
     }
     
     /**
-     * Tạo Room mới và tự động tạo ghế (Admin only)
-     * Logic: Tự động tạo ghế dựa vào totalRows × totalCols
+     * Tạo room mới và tự động tạo ghế (chỉ Admin)
      */
     @Transactional
-    public RoomResponse createRoom(RoomCreateRequest request) {
-        // Tìm Cinema
-        Cinema cinema = cinemaRepository.findById(request.getCinemaId())
-            .orElseThrow(() -> new RuntimeException("Cinema không tồn tại"));
+    public RoomResponse createRoom(RoomRequest request) {
+        checkAdminRole();
         
-        // Kiểm tra số phòng không trùng trong cùng rạp
+        // Kiểm tra cinema tồn tại
+        Cinema cinema = cinemaRepository.findById(request.getCinemaId())
+                .orElseThrow(() -> new RuntimeException("Cinema không tồn tại với id: " + request.getCinemaId()));
+        
+        // Validation: số phòng không trùng trong cùng rạp
         if (roomRepository.existsByCinemaIdAndRoomNumber(request.getCinemaId(), request.getRoomNumber())) {
-            throw new RuntimeException("Số phòng đã tồn tại trong rạp này");
+            throw new RuntimeException("Số phòng " + request.getRoomNumber() + " đã tồn tại trong rạp này");
         }
         
         // Tạo Room mới
@@ -80,119 +101,132 @@ public class RoomService {
         
         Room savedRoom = roomRepository.save(room);
         
-        // Tự động tạo ghế
-        createSeatsForRoom(savedRoom, request.getTotalRows(), request.getTotalCols());
+        // Tự động tạo ghế dựa vào rows và cols
+        createSeatsForRoom(savedRoom, request.getDefaultSeatType());
         
         // Reload room để có seats
-        savedRoom = roomRepository.findById(savedRoom.getId())
-            .orElseThrow(() -> new RuntimeException("Room không tồn tại"));
+        savedRoom = roomRepository.findById(savedRoom.getId()).orElseThrow();
         
-        return convertToRoomResponse(savedRoom);
+        return convertToResponse(savedRoom);
     }
     
     /**
-     * Tự động tạo ghế cho Room
-     * Format: A1, A2, ..., B1, B2, ...
-     * Hàng cuối cùng (2 hàng cuối) là VIP, còn lại là NORMAL
+     * Tự động tạo ghế cho room
+     * Ví dụ: rows=5, cols=10 → tạo A1-A10, B1-B10, C1-C10, D1-D10, E1-E10
      */
-    private void createSeatsForRoom(Room room, Integer totalRows, Integer totalCols) {
+    private void createSeatsForRoom(Room room, SeatType defaultSeatType) {
         List<Seat> seats = new ArrayList<>();
+        int rows = room.getTotalRows();
+        int cols = room.getTotalCols();
         
-        for (int row = 0; row < totalRows; row++) {
-            char rowChar = (char) ('A' + row); // A, B, C, ...
+        // Tạo hàng từ A đến Z (nếu > 26 hàng thì dùng AA, AB, ...)
+        for (int row = 0; row < rows; row++) {
+            String rowLetter = getRowLetter(row); // A, B, C, ... hoặc AA, AB, ...
             
-            // Xác định loại ghế: 2 hàng cuối là VIP
-            SeatType seatType = (row >= totalRows - 2) ? SeatType.VIP : SeatType.NORMAL;
-            
-            for (int col = 1; col <= totalCols; col++) {
+            for (int col = 1; col <= cols; col++) {
                 Seat seat = new Seat();
                 seat.setRoom(room);
-                seat.setSeatNumber(String.valueOf(rowChar) + col); // A1, A2, ...
-                seat.setRow(String.valueOf(rowChar));
+                seat.setSeatNumber(rowLetter + col); // A1, A2, B1, ...
+                seat.setRow(rowLetter);
                 seat.setCol(col);
-                seat.setType(seatType);
+                seat.setType(defaultSeatType != null ? defaultSeatType : SeatType.NORMAL);
                 
                 seats.add(seat);
             }
         }
         
-        // Lưu tất cả ghế vào database
         seatRepository.saveAll(seats);
     }
     
     /**
-     * Cập nhật Room (Admin only)
-     * Lưu ý: Nếu thay đổi rows/cols, cần xóa ghế cũ và tạo lại
+     * Chuyển số hàng thành chữ cái: 0->A, 1->B, ..., 25->Z, 26->AA, 27->AB, ...
      */
-    @Transactional
-    public RoomResponse updateRoom(Long id, RoomUpdateRequest request) {
-        Room room = roomRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Room không tồn tại"));
-        
-        boolean needRecreateSeats = false;
-        Integer oldRows = room.getTotalRows();
-        Integer oldCols = room.getTotalCols();
-        
-        // Kiểm tra số phòng không trùng (nếu thay đổi)
-        if (request.getRoomNumber() != null && !request.getRoomNumber().equals(room.getRoomNumber())) {
-            if (roomRepository.existsByCinemaIdAndRoomNumber(room.getCinema().getId(), request.getRoomNumber())) {
-                throw new RuntimeException("Số phòng đã tồn tại trong rạp này");
-            }
-            room.setRoomNumber(request.getRoomNumber());
+    private String getRowLetter(int rowIndex) {
+        if (rowIndex < 26) {
+            return String.valueOf((char) ('A' + rowIndex));
+        } else {
+            // Nếu > 26 hàng: AA, AB, AC, ...
+            int firstLetter = (rowIndex / 26) - 1;
+            int secondLetter = rowIndex % 26;
+            return String.valueOf((char) ('A' + firstLetter)) + (char) ('A' + secondLetter);
         }
-        
-        // Cập nhật rows/cols nếu có thay đổi
-        if (request.getTotalRows() != null && !request.getTotalRows().equals(oldRows)) {
-            room.setTotalRows(request.getTotalRows());
-            needRecreateSeats = true;
-        }
-        if (request.getTotalCols() != null && !request.getTotalCols().equals(oldCols)) {
-            room.setTotalCols(request.getTotalCols());
-            needRecreateSeats = true;
-        }
-        
-        // Tính lại totalSeats
-        if (request.getTotalRows() != null || request.getTotalCols() != null) {
-            Integer newRows = request.getTotalRows() != null ? request.getTotalRows() : oldRows;
-            Integer newCols = request.getTotalCols() != null ? request.getTotalCols() : oldCols;
-            room.setTotalSeats(newRows * newCols);
-        }
-        
-        Room updatedRoom = roomRepository.save(room);
-        
-        // Nếu thay đổi rows/cols, xóa ghế cũ và tạo lại
-        if (needRecreateSeats) {
-            // Xóa ghế cũ
-            List<Seat> oldSeats = seatRepository.findByRoomId(id);
-            seatRepository.deleteAll(oldSeats);
-            
-            // Tạo ghế mới
-            createSeatsForRoom(updatedRoom, updatedRoom.getTotalRows(), updatedRoom.getTotalCols());
-        }
-        
-        // Reload room để có seats mới
-        updatedRoom = roomRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Room không tồn tại"));
-        
-        return convertToRoomResponse(updatedRoom);
     }
     
     /**
-     * Xóa Room (Admin only)
+     * Cập nhật room (chỉ Admin)
+     * Lưu ý: Nếu thay đổi rows/cols, cần xóa ghế cũ và tạo lại
+     */
+    @Transactional
+    public RoomResponse updateRoom(Long id, RoomRequest request) {
+        checkAdminRole();
+        
+        Room room = roomRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Room không tồn tại với id: " + id));
+        
+        // Kiểm tra cinema tồn tại
+        Cinema cinema = cinemaRepository.findById(request.getCinemaId())
+                .orElseThrow(() -> new RuntimeException("Cinema không tồn tại với id: " + request.getCinemaId()));
+        
+        // Validation: số phòng không trùng (nếu thay đổi)
+        if (!room.getRoomNumber().equals(request.getRoomNumber()) && 
+            roomRepository.existsByCinemaIdAndRoomNumber(request.getCinemaId(), request.getRoomNumber())) {
+            throw new RuntimeException("Số phòng " + request.getRoomNumber() + " đã tồn tại trong rạp này");
+        }
+        
+        // Nếu thay đổi rows/cols, cần xóa ghế cũ và tạo lại
+        boolean needRecreateSeats = !room.getTotalRows().equals(request.getTotalRows()) || 
+                                   !room.getTotalCols().equals(request.getTotalCols());
+        
+        if (needRecreateSeats) {
+            // Xóa tất cả ghế cũ
+            seatRepository.deleteAll(room.getSeats());
+        }
+        
+        // Cập nhật thông tin
+        room.setCinema(cinema);
+        room.setRoomNumber(request.getRoomNumber());
+        room.setTotalRows(request.getTotalRows());
+        room.setTotalCols(request.getTotalCols());
+        room.setTotalSeats(request.getTotalRows() * request.getTotalCols());
+        
+        Room updatedRoom = roomRepository.save(room);
+        
+        // Tạo lại ghế nếu cần
+        if (needRecreateSeats) {
+            createSeatsForRoom(updatedRoom, request.getDefaultSeatType());
+        }
+        
+        // Reload room để có seats
+        updatedRoom = roomRepository.findById(updatedRoom.getId()).orElseThrow();
+        
+        return convertToResponse(updatedRoom);
+    }
+    
+    /**
+     * Xóa room (chỉ Admin)
      */
     @Transactional
     public void deleteRoom(Long id) {
-        if (!roomRepository.existsById(id)) {
-            throw new RuntimeException("Room không tồn tại");
+        checkAdminRole();
+        
+        Room room = roomRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Room không tồn tại với id: " + id));
+        
+        // Kiểm tra room có showtime không (nếu có thì không cho xóa)
+        if (room.getShowtimes() != null && !room.getShowtimes().isEmpty()) {
+            throw new RuntimeException("Không thể xóa phòng đang có suất chiếu. Vui lòng xóa tất cả suất chiếu trước.");
         }
-        // Xóa Room sẽ tự động xóa seats (cascade)
+        
+        // Xóa tất cả ghế (cascade sẽ tự động xóa)
+        seatRepository.deleteAll(room.getSeats());
+        
         roomRepository.deleteById(id);
     }
     
     /**
      * Convert Room entity sang RoomResponse DTO
      */
-    private RoomResponse convertToRoomResponse(Room room) {
+    private RoomResponse convertToResponse(Room room) {
         RoomResponse response = new RoomResponse();
         response.setId(room.getId());
         response.setCinemaId(room.getCinema().getId());
@@ -203,32 +237,14 @@ public class RoomService {
         response.setTotalSeats(room.getTotalSeats());
         response.setCreatedAt(room.getCreatedAt());
         response.setUpdatedAt(room.getUpdatedAt());
-        
-        // Convert seats nếu có
-        if (room.getSeats() != null && !room.getSeats().isEmpty()) {
-            List<SeatResponse> seatResponses = room.getSeats().stream()
-                .map(this::convertToSeatResponse)
-                .collect(Collectors.toList());
-            response.setSeats(seatResponses);
-        }
-        
-        return response;
-    }
-    
-    /**
-     * Convert Seat entity sang SeatResponse DTO
-     */
-    private SeatResponse convertToSeatResponse(Seat seat) {
-        SeatResponse response = new SeatResponse();
-        response.setId(seat.getId());
-        response.setRoomId(seat.getRoom().getId());
-        response.setSeatNumber(seat.getSeatNumber());
-        response.setRow(seat.getRow());
-        response.setCol(seat.getCol());
-        response.setType(seat.getType());
-        response.setCreatedAt(seat.getCreatedAt());
-        response.setUpdatedAt(seat.getUpdatedAt());
         return response;
     }
 }
+
+
+
+
+
+
+
 

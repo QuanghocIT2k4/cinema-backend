@@ -1,9 +1,10 @@
 package com.cinema.controller;
 
-import com.cinema.model.dto.AuthResponse;
-import com.cinema.model.dto.LoginRequest;
-import com.cinema.model.dto.RegisterRequest;
-import com.cinema.model.dto.UserResponse;
+import com.cinema.model.dto.request.ChangePasswordRequest;
+import com.cinema.model.dto.request.LoginRequest;
+import com.cinema.model.dto.request.RegisterRequest;
+import com.cinema.model.dto.response.AuthResponse;
+import com.cinema.model.dto.response.UserResponse;
 import com.cinema.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +50,16 @@ public class AuthController {
     public ResponseEntity<UserResponse> getCurrentUser() {
         UserResponse response = authService.getCurrentUser();
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * PUT /api/auth/change-password
+     * Đổi mật khẩu cho user hiện tại
+     */
+    @PutMapping("/change-password")
+    public ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        authService.changePassword(request);
+        return ResponseEntity.ok().build();
     }
 }
 

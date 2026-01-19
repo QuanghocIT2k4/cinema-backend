@@ -1,18 +1,18 @@
 package com.cinema.service;
 
-import com.cinema.model.dto.CinemaCreateRequest;
-import com.cinema.model.dto.CinemaResponse;
-import com.cinema.model.dto.CinemaUpdateRequest;
-import com.cinema.model.dto.RoomResponse;
+import com.cinema.model.dto.request.CinemaRequest;
+import com.cinema.model.dto.response.CinemaResponse;
 import com.cinema.model.entity.Cinema;
-import com.cinema.model.entity.Room;
+import com.cinema.model.enums.UserRole;
 import com.cinema.repository.CinemaRepository;
+import com.cinema.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Service xử lý logic CRUD Cinema
@@ -24,29 +24,45 @@ public class CinemaService {
     private final CinemaRepository cinemaRepository;
     
     /**
-     * Lấy danh sách tất cả Cinema
+     * Kiểm tra user hiện tại có phải Admin không
      */
-    public List<CinemaResponse> getAllCinemas() {
-        List<Cinema> cinemas = cinemaRepository.findAll();
-        return cinemas.stream()
-            .map(this::convertToCinemaResponse)
-            .collect(Collectors.toList());
+    private void checkAdminRole() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AccessDeniedException("Chưa đăng nhập");
+        }
+        
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        if (userDetails.getUser().getRole() != UserRole.ADMIN) {
+            throw new AccessDeniedException("Chỉ Admin mới có quyền thực hiện thao tác này");
+        }
     }
     
     /**
-     * Lấy chi tiết 1 Cinema (bao gồm danh sách rooms)
+     * Lấy tất cả cinemas (có phân trang)
+     */
+    public Page<CinemaResponse> getAllCinemas(Pageable pageable) {
+        return cinemaRepository.findAll(pageable)
+                .map(this::convertToResponse);
+    }
+    
+    /**
+     * Lấy cinema theo ID
      */
     public CinemaResponse getCinemaById(Long id) {
         Cinema cinema = cinemaRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Cinema không tồn tại"));
-        return convertToCinemaResponse(cinema);
+                .orElseThrow(() -> new RuntimeException("Cinema không tồn tại với id: " + id));
+        return convertToResponse(cinema);
     }
     
     /**
-     * Tạo Cinema mới (Admin only)
+     * Tạo cinema mới (chỉ Admin)
      */
     @Transactional
-    public CinemaResponse createCinema(CinemaCreateRequest request) {
+    public CinemaResponse createCinema(CinemaRequest request) {
+        checkAdminRole();
+        
+        // Tạo Cinema mới
         Cinema cinema = new Cinema();
         cinema.setName(request.getName());
         cinema.setAddress(request.getAddress());
@@ -54,23 +70,22 @@ public class CinemaService {
         cinema.setEmail(request.getEmail());
         
         Cinema savedCinema = cinemaRepository.save(cinema);
-        return convertToCinemaResponse(savedCinema);
+        return convertToResponse(savedCinema);
     }
     
     /**
-     * Cập nhật Cinema (Admin only)
+     * Cập nhật cinema (chỉ Admin)
      */
     @Transactional
-    public CinemaResponse updateCinema(Long id, CinemaUpdateRequest request) {
-        Cinema cinema = cinemaRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Cinema không tồn tại"));
+    public CinemaResponse updateCinema(Long id, CinemaRequest request) {
+        checkAdminRole();
         
-        if (request.getName() != null) {
-            cinema.setName(request.getName());
-        }
-        if (request.getAddress() != null) {
-            cinema.setAddress(request.getAddress());
-        }
+        Cinema cinema = cinemaRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Cinema không tồn tại với id: " + id));
+        
+        // Cập nhật thông tin
+        cinema.setName(request.getName());
+        cinema.setAddress(request.getAddress());
         if (request.getPhone() != null) {
             cinema.setPhone(request.getPhone());
         }
@@ -79,24 +94,33 @@ public class CinemaService {
         }
         
         Cinema updatedCinema = cinemaRepository.save(cinema);
-        return convertToCinemaResponse(updatedCinema);
+        return convertToResponse(updatedCinema);
     }
     
     /**
-     * Xóa Cinema (Admin only)
+     * Xóa cinema (chỉ Admin)
      */
     @Transactional
     public void deleteCinema(Long id) {
+        checkAdminRole();
+        
         if (!cinemaRepository.existsById(id)) {
-            throw new RuntimeException("Cinema không tồn tại");
+            throw new RuntimeException("Cinema không tồn tại với id: " + id);
         }
+        
+        // Kiểm tra cinema có phòng chiếu không (nếu có thì không cho xóa)
+        Cinema cinema = cinemaRepository.findById(id).orElseThrow();
+        if (cinema.getRooms() != null && !cinema.getRooms().isEmpty()) {
+            throw new RuntimeException("Không thể xóa rạp đang có phòng chiếu. Vui lòng xóa tất cả phòng chiếu trước.");
+        }
+        
         cinemaRepository.deleteById(id);
     }
     
     /**
      * Convert Cinema entity sang CinemaResponse DTO
      */
-    private CinemaResponse convertToCinemaResponse(Cinema cinema) {
+    private CinemaResponse convertToResponse(Cinema cinema) {
         CinemaResponse response = new CinemaResponse();
         response.setId(cinema.getId());
         response.setName(cinema.getName());
@@ -105,34 +129,14 @@ public class CinemaService {
         response.setEmail(cinema.getEmail());
         response.setCreatedAt(cinema.getCreatedAt());
         response.setUpdatedAt(cinema.getUpdatedAt());
-        
-        // Convert rooms nếu có
-        if (cinema.getRooms() != null) {
-            List<RoomResponse> roomResponses = cinema.getRooms().stream()
-                .map(this::convertToRoomResponse)
-                .collect(Collectors.toList());
-            response.setRooms(roomResponses);
-        }
-        
-        return response;
-    }
-    
-    /**
-     * Convert Room entity sang RoomResponse DTO (helper method)
-     */
-    private RoomResponse convertToRoomResponse(Room room) {
-        RoomResponse response = new RoomResponse();
-        response.setId(room.getId());
-        response.setCinemaId(room.getCinema().getId());
-        response.setCinemaName(room.getCinema().getName());
-        response.setRoomNumber(room.getRoomNumber());
-        response.setTotalRows(room.getTotalRows());
-        response.setTotalCols(room.getTotalCols());
-        response.setTotalSeats(room.getTotalSeats());
-        response.setCreatedAt(room.getCreatedAt());
-        response.setUpdatedAt(room.getUpdatedAt());
-        // Không set seats ở đây để tránh circular reference
         return response;
     }
 }
+
+
+
+
+
+
+
 

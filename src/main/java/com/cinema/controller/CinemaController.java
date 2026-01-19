@@ -1,17 +1,16 @@
 package com.cinema.controller;
 
-import com.cinema.model.dto.CinemaCreateRequest;
-import com.cinema.model.dto.CinemaResponse;
-import com.cinema.model.dto.CinemaUpdateRequest;
+import com.cinema.model.dto.request.CinemaRequest;
+import com.cinema.model.dto.response.CinemaResponse;
 import com.cinema.service.CinemaService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 /**
  * Controller xử lý các API CRUD Cinema
@@ -25,19 +24,21 @@ public class CinemaController {
     
     /**
      * GET /api/cinemas
-     * Lấy danh sách tất cả Cinema
-     * Public: Không cần authentication
+     * Lấy danh sách tất cả cinemas (có phân trang)
+     * Query params: page (default 0), size (default 10)
      */
     @GetMapping
-    public ResponseEntity<List<CinemaResponse>> getAllCinemas() {
-        List<CinemaResponse> cinemas = cinemaService.getAllCinemas();
+    public ResponseEntity<Page<CinemaResponse>> getAllCinemas(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<CinemaResponse> cinemas = cinemaService.getAllCinemas(pageable);
         return ResponseEntity.ok(cinemas);
     }
     
     /**
      * GET /api/cinemas/{id}
-     * Lấy chi tiết 1 Cinema (bao gồm danh sách rooms)
-     * Public: Không cần authentication
+     * Lấy thông tin cinema theo ID
      */
     @GetMapping("/{id}")
     public ResponseEntity<CinemaResponse> getCinemaById(@PathVariable Long id) {
@@ -47,37 +48,41 @@ public class CinemaController {
     
     /**
      * POST /api/cinemas
-     * Tạo Cinema mới (Admin only)
+     * Tạo cinema mới (chỉ Admin)
      */
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<CinemaResponse> createCinema(@Valid @RequestBody CinemaCreateRequest request) {
+    public ResponseEntity<CinemaResponse> createCinema(@Valid @RequestBody CinemaRequest request) {
         CinemaResponse cinema = cinemaService.createCinema(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(cinema);
     }
     
     /**
      * PUT /api/cinemas/{id}
-     * Cập nhật Cinema (Admin only)
+     * Cập nhật cinema (chỉ Admin)
      */
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<CinemaResponse> updateCinema(
             @PathVariable Long id,
-            @Valid @RequestBody CinemaUpdateRequest request) {
+            @Valid @RequestBody CinemaRequest request) {
         CinemaResponse cinema = cinemaService.updateCinema(id, request);
         return ResponseEntity.ok(cinema);
     }
     
     /**
      * DELETE /api/cinemas/{id}
-     * Xóa Cinema (Admin only)
+     * Xóa cinema (chỉ Admin)
      */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteCinema(@PathVariable Long id) {
         cinemaService.deleteCinema(id);
         return ResponseEntity.noContent().build();
     }
 }
+
+
+
+
+
+
+
 

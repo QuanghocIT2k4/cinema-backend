@@ -1,8 +1,7 @@
 package com.cinema.controller;
 
-import com.cinema.model.dto.MovieCreateRequest;
-import com.cinema.model.dto.MovieResponse;
-import com.cinema.model.dto.MovieUpdateRequest;
+import com.cinema.model.dto.request.MovieRequest;
+import com.cinema.model.dto.response.MovieResponse;
 import com.cinema.model.enums.MovieStatus;
 import com.cinema.service.MovieService;
 import jakarta.validation.Valid;
@@ -10,10 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -28,28 +25,38 @@ public class MovieController {
     
     /**
      * GET /api/movies
-     * Lấy danh sách Movie với pagination, search và filter
-     * Public: Không cần authentication
+     * Lấy danh sách tất cả movies (có phân trang)
+     * Query params: page (default 0), size (default 10)
      */
     @GetMapping
     public ResponseEntity<Page<MovieResponse>> getAllMovies(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "10") int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<MovieResponse> movies = movieService.getAllMovies(pageable);
+        return ResponseEntity.ok(movies);
+    }
+    
+    /**
+     * GET /api/movies/search
+     * Tìm kiếm movies theo name, genre, status
+     * Query params: keyword, genre, status, page, size
+     */
+    @GetMapping("/search")
+    public ResponseEntity<Page<MovieResponse>> searchMovies(
+            @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String genre,
             @RequestParam(required = false) MovieStatus status,
-            @RequestParam(defaultValue = "id") String sortBy,
-            @RequestParam(defaultValue = "DESC") Sort.Direction direction) {
-        
-        Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortBy));
-        Page<MovieResponse> movies = movieService.getAllMovies(pageable, search, genre, status);
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<MovieResponse> movies = movieService.searchMovies(keyword, genre, status, pageable);
         return ResponseEntity.ok(movies);
     }
     
     /**
      * GET /api/movies/{id}
-     * Lấy chi tiết 1 Movie
-     * Public: Không cần authentication
+     * Lấy thông tin movie theo ID
      */
     @GetMapping("/{id}")
     public ResponseEntity<MovieResponse> getMovieById(@PathVariable Long id) {
@@ -59,34 +66,31 @@ public class MovieController {
     
     /**
      * POST /api/movies
-     * Tạo Movie mới (Admin only)
+     * Tạo movie mới (chỉ Admin)
      */
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<MovieResponse> createMovie(@Valid @RequestBody MovieCreateRequest request) {
+    public ResponseEntity<MovieResponse> createMovie(@Valid @RequestBody MovieRequest request) {
         MovieResponse movie = movieService.createMovie(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(movie);
     }
     
     /**
      * PUT /api/movies/{id}
-     * Cập nhật Movie (Admin only)
+     * Cập nhật movie (chỉ Admin)
      */
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<MovieResponse> updateMovie(
             @PathVariable Long id,
-            @Valid @RequestBody MovieUpdateRequest request) {
+            @Valid @RequestBody MovieRequest request) {
         MovieResponse movie = movieService.updateMovie(id, request);
         return ResponseEntity.ok(movie);
     }
     
     /**
      * DELETE /api/movies/{id}
-     * Xóa Movie (Admin only)
+     * Xóa movie (chỉ Admin)
      */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteMovie(@PathVariable Long id) {
         movieService.deleteMovie(id);
         return ResponseEntity.noContent().build();

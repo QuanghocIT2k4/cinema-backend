@@ -1,14 +1,15 @@
 package com.cinema.controller;
 
-import com.cinema.model.dto.RoomCreateRequest;
-import com.cinema.model.dto.RoomResponse;
-import com.cinema.model.dto.RoomUpdateRequest;
+import com.cinema.model.dto.request.RoomRequest;
+import com.cinema.model.dto.response.RoomResponse;
 import com.cinema.service.RoomService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -25,20 +26,31 @@ public class RoomController {
     
     /**
      * GET /api/rooms
-     * Lấy danh sách Room (có thể filter theo cinemaId)
-     * Public: Không cần authentication
+     * Lấy danh sách tất cả rooms (có phân trang)
+     * Query params: page (default 0), size (default 10)
      */
     @GetMapping
-    public ResponseEntity<List<RoomResponse>> getAllRooms(
-            @RequestParam(required = false) Long cinemaId) {
-        List<RoomResponse> rooms = roomService.getAllRooms(cinemaId);
+    public ResponseEntity<Page<RoomResponse>> getAllRooms(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<RoomResponse> rooms = roomService.getAllRooms(pageable);
+        return ResponseEntity.ok(rooms);
+    }
+    
+    /**
+     * GET /api/rooms/cinema/{cinemaId}
+     * Lấy danh sách rooms theo cinema ID
+     */
+    @GetMapping("/cinema/{cinemaId}")
+    public ResponseEntity<List<RoomResponse>> getRoomsByCinemaId(@PathVariable Long cinemaId) {
+        List<RoomResponse> rooms = roomService.getRoomsByCinemaId(cinemaId);
         return ResponseEntity.ok(rooms);
     }
     
     /**
      * GET /api/rooms/{id}
-     * Lấy chi tiết 1 Room (bao gồm danh sách seats)
-     * Public: Không cần authentication
+     * Lấy thông tin room theo ID
      */
     @GetMapping("/{id}")
     public ResponseEntity<RoomResponse> getRoomById(@PathVariable Long id) {
@@ -48,38 +60,42 @@ public class RoomController {
     
     /**
      * POST /api/rooms
-     * Tạo Room mới và tự động tạo ghế (Admin only)
+     * Tạo room mới và tự động tạo ghế (chỉ Admin)
      */
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<RoomResponse> createRoom(@Valid @RequestBody RoomCreateRequest request) {
+    public ResponseEntity<RoomResponse> createRoom(@Valid @RequestBody RoomRequest request) {
         RoomResponse room = roomService.createRoom(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(room);
     }
     
     /**
      * PUT /api/rooms/{id}
-     * Cập nhật Room (Admin only)
-     * Nếu thay đổi rows/cols, sẽ tự động xóa ghế cũ và tạo lại
+     * Cập nhật room (chỉ Admin)
+     * Lưu ý: Nếu thay đổi rows/cols, sẽ xóa ghế cũ và tạo lại
      */
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<RoomResponse> updateRoom(
             @PathVariable Long id,
-            @Valid @RequestBody RoomUpdateRequest request) {
+            @Valid @RequestBody RoomRequest request) {
         RoomResponse room = roomService.updateRoom(id, request);
         return ResponseEntity.ok(room);
     }
     
     /**
      * DELETE /api/rooms/{id}
-     * Xóa Room (Admin only)
+     * Xóa room (chỉ Admin)
      */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteRoom(@PathVariable Long id) {
         roomService.deleteRoom(id);
         return ResponseEntity.noContent().build();
     }
 }
+
+
+
+
+
+
+
 

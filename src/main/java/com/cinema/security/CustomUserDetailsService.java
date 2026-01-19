@@ -9,7 +9,14 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
 /**
- * UserDetailsService - load User từ DB cho Spring Security.
+ * CustomUserDetailsService
+ *
+ * BƯỚC 3 theo roadmap: Code UserDetailsService.
+ *
+ * Nhiệm vụ:
+ * - Nhận username từ Spring Security.
+ * - Tìm User tương ứng trong database (UserRepository).
+ * - Bọc User thành CustomUserDetails để Security dùng trong quá trình authenticate/authorize.
  */
 @Service
 @RequiredArgsConstructor
@@ -21,6 +28,7 @@ public class CustomUserDetailsService implements UserDetailsService {
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with username: " + username));
+
         return new CustomUserDetails(user);
     }
 }

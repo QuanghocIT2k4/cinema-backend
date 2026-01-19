@@ -1,19 +1,19 @@
 package com.cinema.service;
 
-import com.cinema.model.dto.MovieCreateRequest;
-import com.cinema.model.dto.MovieResponse;
-import com.cinema.model.dto.MovieUpdateRequest;
+import com.cinema.model.dto.request.MovieRequest;
+import com.cinema.model.dto.response.MovieResponse;
 import com.cinema.model.entity.Movie;
 import com.cinema.model.enums.MovieStatus;
+import com.cinema.model.enums.UserRole;
 import com.cinema.repository.MovieRepository;
+import com.cinema.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDate;
 
 /**
  * Service xử lý logic CRUD Movie
@@ -25,56 +25,136 @@ public class MovieService {
     private final MovieRepository movieRepository;
     
     /**
-     * Lấy danh sách Movie với pagination, search và filter
+     * Kiểm tra user hiện tại có phải Admin không
      */
-    public Page<MovieResponse> getAllMovies(Pageable pageable, String search, String genre, MovieStatus status) {
-        Specification<Movie> spec = Specification.where(null);
-        
-        // Search theo title
-        if (search != null && !search.trim().isEmpty()) {
-            String keyword = search.trim().toLowerCase();
-            spec = spec.and((root, query, cb) -> 
-                cb.like(cb.lower(root.get("title")), "%" + keyword + "%")
-            );
+    private void checkAdminRole() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AccessDeniedException("Chưa đăng nhập");
         }
         
-        // Filter theo genre
-        if (genre != null && !genre.trim().isEmpty()) {
-            spec = spec.and((root, query, cb) -> 
-                cb.equal(root.get("genre"), genre.trim())
-            );
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        if (userDetails.getUser().getRole() != UserRole.ADMIN) {
+            throw new AccessDeniedException("Chỉ Admin mới có quyền thực hiện thao tác này");
         }
-        
-        // Filter theo status
-        if (status != null) {
-            spec = spec.and((root, query, cb) -> 
-                cb.equal(root.get("status"), status)
-            );
-        }
-        
-        Page<Movie> movies = movieRepository.findAll(spec, pageable);
-        return movies.map(this::convertToMovieResponse);
     }
     
     /**
-     * Lấy chi tiết 1 Movie
+     * Lấy tất cả movies (có phân trang)
+     */
+    public Page<MovieResponse> getAllMovies(Pageable pageable) {
+        return movieRepository.findAll(pageable)
+                .map(this::convertToResponse);
+    }
+    
+    /**
+     * Lấy movie theo ID
      */
     public MovieResponse getMovieById(Long id) {
         Movie movie = movieRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Movie không tồn tại"));
-        return convertToMovieResponse(movie);
+                .orElseThrow(() -> new RuntimeException("Movie không tồn tại với id: " + id));
+        return convertToResponse(movie);
     }
     
     /**
-     * Tạo Movie mới (Admin only)
+     * Tìm kiếm movies theo name, genre, status
+     */
+    public Page<MovieResponse> searchMovies(String keyword, String genre, MovieStatus status, Pageable pageable) {
+        // Nếu có keyword, tìm theo title
+        if (keyword != null && !keyword.trim().isEmpty()) {
+            return movieRepository.findByTitleContaining(keyword.trim())
+                    .stream()
+                    .filter(movie -> {
+                        if (genre != null && !genre.trim().isEmpty() && !movie.getGenre().equalsIgnoreCase(genre.trim())) {
+                            return false;
+                        }
+                        if (status != null && movie.getStatus() != status) {
+                            return false;
+                        }
+                        return true;
+                    })
+                    .map(this::convertToResponse)
+                    .collect(java.util.stream.Collectors.toList())
+                    .stream()
+                    .collect(java.util.stream.Collectors.collectingAndThen(
+                            java.util.stream.Collectors.toList(),
+                            list -> {
+                                int start = (int) pageable.getOffset();
+                                int end = Math.min((start + pageable.getPageSize()), list.size());
+                                return new org.springframework.data.domain.PageImpl<>(
+                                        list.subList(start, end),
+                                        pageable,
+                                        list.size()
+                                );
+                            }
+                    ));
+        }
+        
+        // Nếu có genre, tìm theo genre
+        if (genre != null && !genre.trim().isEmpty()) {
+            return movieRepository.findByGenre(genre.trim())
+                    .stream()
+                    .filter(movie -> {
+                        if (status != null && movie.getStatus() != status) {
+                            return false;
+                        }
+                        return true;
+                    })
+                    .map(this::convertToResponse)
+                    .collect(java.util.stream.Collectors.toList())
+                    .stream()
+                    .collect(java.util.stream.Collectors.collectingAndThen(
+                            java.util.stream.Collectors.toList(),
+                            list -> {
+                                int start = (int) pageable.getOffset();
+                                int end = Math.min((start + pageable.getPageSize()), list.size());
+                                return new org.springframework.data.domain.PageImpl<>(
+                                        list.subList(start, end),
+                                        pageable,
+                                        list.size()
+                                );
+                            }
+                    ));
+        }
+        
+        // Nếu có status, tìm theo status
+        if (status != null) {
+            return movieRepository.findByStatus(status)
+                    .stream()
+                    .map(this::convertToResponse)
+                    .collect(java.util.stream.Collectors.toList())
+                    .stream()
+                    .collect(java.util.stream.Collectors.collectingAndThen(
+                            java.util.stream.Collectors.toList(),
+                            list -> {
+                                int start = (int) pageable.getOffset();
+                                int end = Math.min((start + pageable.getPageSize()), list.size());
+                                return new org.springframework.data.domain.PageImpl<>(
+                                        list.subList(start, end),
+                                        pageable,
+                                        list.size()
+                                );
+                            }
+                    ));
+        }
+        
+        // Nếu không có filter, trả về tất cả
+        return getAllMovies(pageable);
+    }
+    
+    /**
+     * Tạo movie mới (chỉ Admin)
      */
     @Transactional
-    public MovieResponse createMovie(MovieCreateRequest request) {
-        // Validate: releaseDate < endDate
+    public MovieResponse createMovie(MovieRequest request) {
+        checkAdminRole();
+        
+        // Validation: releaseDate phải trước endDate
         if (request.getReleaseDate().isAfter(request.getEndDate())) {
             throw new RuntimeException("Ngày khởi chiếu phải trước ngày kết thúc");
         }
         
+        // Tạo Movie mới
         Movie movie = new Movie();
         movie.setTitle(request.getTitle());
         movie.setDescription(request.getDescription());
@@ -88,49 +168,33 @@ public class MovieService {
         movie.setAgeRating(request.getAgeRating());
         
         Movie savedMovie = movieRepository.save(movie);
-        return convertToMovieResponse(savedMovie);
+        return convertToResponse(savedMovie);
     }
     
     /**
-     * Cập nhật Movie (Admin only)
+     * Cập nhật movie (chỉ Admin)
      */
     @Transactional
-    public MovieResponse updateMovie(Long id, MovieUpdateRequest request) {
-        Movie movie = movieRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Movie không tồn tại"));
+    public MovieResponse updateMovie(Long id, MovieRequest request) {
+        checkAdminRole();
         
-        // Validate: releaseDate < endDate (nếu có thay đổi)
-        LocalDate releaseDate = request.getReleaseDate() != null ? request.getReleaseDate() : movie.getReleaseDate();
-        LocalDate endDate = request.getEndDate() != null ? request.getEndDate() : movie.getEndDate();
-        if (releaseDate.isAfter(endDate)) {
+        Movie movie = movieRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Movie không tồn tại với id: " + id));
+        
+        // Validation: releaseDate phải trước endDate
+        if (request.getReleaseDate().isAfter(request.getEndDate())) {
             throw new RuntimeException("Ngày khởi chiếu phải trước ngày kết thúc");
         }
         
-        // Cập nhật các field
-        if (request.getTitle() != null) {
-            movie.setTitle(request.getTitle());
-        }
-        if (request.getDescription() != null) {
-            movie.setDescription(request.getDescription());
-        }
-        if (request.getGenre() != null) {
-            movie.setGenre(request.getGenre());
-        }
-        if (request.getDuration() != null) {
-            movie.setDuration(request.getDuration());
-        }
-        if (request.getPoster() != null) {
-            movie.setPoster(request.getPoster());
-        }
-        if (request.getTrailer() != null) {
-            movie.setTrailer(request.getTrailer());
-        }
-        if (request.getReleaseDate() != null) {
-            movie.setReleaseDate(request.getReleaseDate());
-        }
-        if (request.getEndDate() != null) {
-            movie.setEndDate(request.getEndDate());
-        }
+        // Cập nhật thông tin
+        movie.setTitle(request.getTitle());
+        movie.setDescription(request.getDescription());
+        movie.setGenre(request.getGenre());
+        movie.setDuration(request.getDuration());
+        movie.setPoster(request.getPoster());
+        movie.setTrailer(request.getTrailer());
+        movie.setReleaseDate(request.getReleaseDate());
+        movie.setEndDate(request.getEndDate());
         if (request.getStatus() != null) {
             movie.setStatus(request.getStatus());
         }
@@ -139,24 +203,27 @@ public class MovieService {
         }
         
         Movie updatedMovie = movieRepository.save(movie);
-        return convertToMovieResponse(updatedMovie);
+        return convertToResponse(updatedMovie);
     }
     
     /**
-     * Xóa Movie (Admin only)
+     * Xóa movie (chỉ Admin)
      */
     @Transactional
     public void deleteMovie(Long id) {
+        checkAdminRole();
+        
         if (!movieRepository.existsById(id)) {
-            throw new RuntimeException("Movie không tồn tại");
+            throw new RuntimeException("Movie không tồn tại với id: " + id);
         }
+        
         movieRepository.deleteById(id);
     }
     
     /**
      * Convert Movie entity sang MovieResponse DTO
      */
-    private MovieResponse convertToMovieResponse(Movie movie) {
+    private MovieResponse convertToResponse(Movie movie) {
         MovieResponse response = new MovieResponse();
         response.setId(movie.getId());
         response.setTitle(movie.getTitle());

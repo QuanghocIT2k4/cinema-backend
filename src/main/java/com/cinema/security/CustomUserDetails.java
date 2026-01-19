@@ -10,7 +10,13 @@ import java.util.Collection;
 import java.util.Collections;
 
 /**
- * Adapter User -> UserDetails cho Spring Security.
+ * CustomUserDetails
+ *
+ * Bọc entity User của mình để Spring Security hiểu được:
+ * - username (dùng để login).
+ * - password (hash đã mã hoá).
+ * - authorities (ROLE_ADMIN, ROLE_CUSTOMER...).
+ * - trạng thái tài khoản (active, locked...).
  */
 public class CustomUserDetails implements UserDetails {
 
@@ -20,9 +26,13 @@ public class CustomUserDetails implements UserDetails {
         this.user = user;
     }
 
+    /**
+     * Trả về danh sách quyền (authorities) của user.
+     * - Convention của Spring Security: ROLE_XXX
+     * - Ở đây map từ enum UserRole -> SimpleGrantedAuthority("ROLE_" + roleName)
+     */
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        // ROLE_ prefix theo convention Spring Security
         String roleName = "ROLE_" + user.getRole().name();
         return Collections.singletonList(new SimpleGrantedAuthority(roleName));
     }
@@ -36,6 +46,8 @@ public class CustomUserDetails implements UserDetails {
     public String getUsername() {
         return user.getUsername();
     }
+
+    // Các method bên dưới dùng để khoá/mở tài khoản
 
     @Override
     public boolean isAccountNonExpired() {
@@ -56,6 +68,8 @@ public class CustomUserDetails implements UserDetails {
     public boolean isEnabled() {
         return user.getStatus() == UserStatus.ACTIVE;
     }
+
+    // Một số helper để lấy thêm thông tin nếu cần
 
     public Long getId() {
         return user.getId();

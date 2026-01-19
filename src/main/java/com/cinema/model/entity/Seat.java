@@ -32,7 +32,7 @@ public class Seat {
     @Column(name = "seat_number", nullable = false, length = 10)
     private String seatNumber; // A1, A2, B1, ...
 
-    @Column(nullable = false, length = 5)
+    @Column(name = "seat_row", nullable = false, length = 5)
     private String row; // A, B, C, ...
 
     @Column(nullable = false)
