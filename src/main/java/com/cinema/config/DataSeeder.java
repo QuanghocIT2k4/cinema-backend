@@ -644,20 +644,28 @@ public class DataSeeder implements CommandLineRunner {
             BigDecimal refreshmentTotal = BigDecimal.ZERO;
             if (!refreshments.isEmpty() && random.nextBoolean()) {
                 int numRefreshments = 1 + random.nextInt(3);
-                for (int k = 0; k < numRefreshments; k++) {
-                    Refreshment refreshment = refreshments.get(random.nextInt(refreshments.size()));
-                    int quantity = 1 + random.nextInt(2);
-                    
-                    BookingRefreshment br = new BookingRefreshment();
-                    br.setBooking(booking);
-                    br.setRefreshment(refreshment);
-                    br.setQuantity(quantity);
-                    // Tổng tiền cho combo này = đơn giá * số lượng
-                    BigDecimal itemTotal = refreshment.getPrice().multiply(BigDecimal.valueOf(quantity));
-                    br.setTotalPrice(itemTotal);
-                    bookingRefreshmentRepository.save(br);
-                    
-                    refreshmentTotal = refreshmentTotal.add(itemTotal);
+                // Dùng Set để tránh duplicate refreshment trong cùng booking
+                Set<Refreshment> selectedRefreshments = new HashSet<>();
+                List<Refreshment> availableRefreshments = new ArrayList<>(refreshments);
+                Collections.shuffle(availableRefreshments, random);
+                
+                for (int k = 0; k < numRefreshments && k < availableRefreshments.size(); k++) {
+                    Refreshment refreshment = availableRefreshments.get(k);
+                    // Tránh duplicate: chỉ thêm nếu chưa có trong Set
+                    if (selectedRefreshments.add(refreshment)) {
+                        int quantity = 1 + random.nextInt(2);
+                        
+                        BookingRefreshment br = new BookingRefreshment();
+                        br.setBooking(booking);
+                        br.setRefreshment(refreshment);
+                        br.setQuantity(quantity);
+                        // Tổng tiền cho combo này = đơn giá * số lượng
+                        BigDecimal itemTotal = refreshment.getPrice().multiply(BigDecimal.valueOf(quantity));
+                        br.setTotalPrice(itemTotal);
+                        bookingRefreshmentRepository.save(br);
+                        
+                        refreshmentTotal = refreshmentTotal.add(itemTotal);
+                    }
                 }
             }
             
