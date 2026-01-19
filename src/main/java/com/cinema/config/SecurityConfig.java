@@ -58,6 +58,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         // Cho phép public endpoints không cần authentication
+                        .requestMatchers("/api").permitAll() // API info endpoint
                         .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
                         // GET movies public (chỉ GET method)
                         .requestMatchers(HttpMethod.GET, "/api/movies/**").permitAll()
