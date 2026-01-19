@@ -42,23 +42,28 @@
    - **Region**: Cùng region với database
    - **Branch**: `main` (hoặc branch bạn muốn deploy)
    - **Root Directory**: `cinema-backend` (nếu repo có nhiều folder)
-   - **Runtime**: `Java`
-   - **Build Command**: `./mvnw clean package -DskipTests`
-   - **Start Command**: `java -jar target/cinema-backend-*.jar --spring.profiles.active=production`
+   - **Language**: Chọn **Docker** (Render không có preset Java, dùng Docker)
+   - **Build Command**: (Để trống - Dockerfile sẽ tự build)
+   - **Start Command**: (Để trống - Dockerfile sẽ tự start)
    - **Plan**: Free (hoặc Starter)
 
 4. **Environment Variables** (tab "Environment"):
    ```
    SPRING_PROFILES_ACTIVE=production
-   PORT=10000
-   DB_HOST=<Internal Database URL từ bước 3>
-   DB_PORT=3306
-   DB_NAME=cinema_db
-   DB_USERNAME=<username từ bước 3>
-   DB_PASSWORD=<password từ bước 3>
+   
+   # Database (PostgreSQL từ Render)
+   DB_HOST=dpg-d5n4163e5dus73etcgtg-a
+   DB_PORT=5432
+   DB_NAME=cinema_db_pc0h
+   DB_USERNAME=cinema_user
+   DB_PASSWORD=NWAvD2XnZGXYRFtHoQi7FeDTJfLABSan
+   
+   # JWT
    JWT_SECRET=<tạo một secret ngẫu nhiên dài ít nhất 32 ký tự>
    JWT_EXPIRATION_MS=86400000
-   ALLOWED_ORIGINS=https://your-vercel-app.vercel.app,https://your-custom-domain.com
+   
+   # CORS (sẽ cập nhật sau khi có URL Vercel)
+   ALLOWED_ORIGINS=https://your-vercel-app.vercel.app
    ```
 
    **Lưu ý**: 
