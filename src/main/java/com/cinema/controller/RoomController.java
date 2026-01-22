@@ -2,6 +2,7 @@ package com.cinema.controller;
 
 import com.cinema.model.dto.request.RoomRequest;
 import com.cinema.model.dto.response.RoomResponse;
+import com.cinema.model.dto.response.SeatResponse;
 import com.cinema.service.RoomService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -57,6 +58,16 @@ public class RoomController {
         RoomResponse room = roomService.getRoomById(id);
         return ResponseEntity.ok(room);
     }
+
+    /**
+     * GET /api/rooms/{id}/seats
+     * Lấy danh sách ghế theo room ID (public, không cần admin)
+     */
+    @GetMapping("/{id}/seats")
+    public ResponseEntity<List<SeatResponse>> getSeatsByRoomId(@PathVariable Long id) {
+        List<SeatResponse> seats = roomService.getSeatsByRoomId(id);
+        return ResponseEntity.ok(seats);
+    }
     
     /**
      * POST /api/rooms
@@ -91,6 +102,11 @@ public class RoomController {
         return ResponseEntity.noContent().build();
     }
 }
+
+
+
+
+
 
 
 

@@ -81,8 +81,8 @@ Hoặc dùng script:
 
 ### 5. Kiểm tra Application đang chạy
 
-- Mở browser: `http://localhost:8080/api/test/db`
-- Nếu thấy JSON response → Backend đã kết nối MySQL thành công!
+- Mở browser: `http://localhost:8080/api`
+- Nếu thấy JSON response → Backend đã chạy thành công!
 
 ## Docker Commands
 
@@ -112,9 +112,6 @@ docker-compose restart mysql
 - `POST /api/auth/register` - Đăng ký
 - `POST /api/auth/login` - Đăng nhập (trả về JWT token)
 - `GET /api/auth/me` - Lấy thông tin user hiện tại
-
-### Test
-- `GET /api/test/db` - Test kết nối database
 
 ## Lưu ý
 

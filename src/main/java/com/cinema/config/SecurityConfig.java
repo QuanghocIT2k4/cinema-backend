@@ -52,10 +52,10 @@ public class SecurityConfig {
         http
                 // Dùng JWT stateless nên tạm thời tắt CSRF cho đơn giản
                 .csrf(csrf -> csrf.disable())
-                // Enable CORS for frontend dev server (Vite)
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 // Chuẩn bị cho kiến trúc JWT: server không lưu session login
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // Enable CORS BEFORE authorization (quan trọng!)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
                         // Cho phép public endpoints không cần authentication
                         .requestMatchers("/api").permitAll() // API info endpoint
@@ -98,6 +98,11 @@ public class SecurityConfig {
         
         // Đọc từ biến môi trường ALLOWED_ORIGINS (cho production)
         String allowedOriginsEnv = System.getenv("ALLOWED_ORIGINS");
+        
+        // Log để debug
+        System.out.println("=== CORS CONFIG DEBUG ===");
+        System.out.println("ALLOWED_ORIGINS from env: " + allowedOriginsEnv);
+        
         if (allowedOriginsEnv != null && !allowedOriginsEnv.isEmpty()) {
             // Split bằng comma và trim whitespace
             List<String> origins = List.of(allowedOriginsEnv.split(","))
@@ -106,12 +111,16 @@ public class SecurityConfig {
                     .filter(s -> !s.isEmpty())
                     .toList();
             config.setAllowedOrigins(origins);
+            System.out.println("CORS Origins configured: " + origins);
         } else {
             // Default cho development
-            config.setAllowedOrigins(List.of(
+            List<String> defaultOrigins = List.of(
                     "http://localhost:5173",
-                    "http://127.0.0.1:5173"
-            ));
+                    "http://127.0.0.1:5173",
+                    "https://cinema-web-sand.vercel.app" // Thêm Vercel URL vào default để debug
+            );
+            config.setAllowedOrigins(defaultOrigins);
+            System.out.println("CORS Origins (default): " + defaultOrigins);
         }
         
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
@@ -120,6 +129,7 @@ public class SecurityConfig {
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
+        System.out.println("=== CORS CONFIG END ===");
         return source;
     }
 
@@ -141,5 +151,3 @@ public class SecurityConfig {
         return configuration.getAuthenticationManager();
     }
 }
-
-

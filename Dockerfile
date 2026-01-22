@@ -25,3 +25,9 @@ EXPOSE 8080
 # Run app
 ENTRYPOINT ["java", "-jar", "app.jar", "--spring.profiles.active=production"]
 
+
+
+
+
+
+

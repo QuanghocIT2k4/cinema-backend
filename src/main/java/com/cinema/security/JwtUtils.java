@@ -45,17 +45,21 @@ public class JwtUtils {
     }
 
     /**
-     * Tạo JWT token từ username.
-     * - subject: username
-     * - issuedAt: thời điểm tạo
-     * - expiration: now + jwtExpirationMs
+     * Tạo JWT token từ User:
+     * - subject: email (đang dùng email để đăng nhập)
+     * - kèm claims: id, username, email, role, fullName
      */
-    public String generateToken(String username) {
+    public String generateToken(com.cinema.model.entity.User user) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + jwtExpirationMs);
 
         return Jwts.builder()
-                .subject(username)
+                .subject(user.getEmail())
+                .claim("id", user.getId())
+                .claim("username", user.getUsername())
+                .claim("email", user.getEmail())
+                .claim("role", user.getRole() != null ? user.getRole().name() : null)
+                .claim("fullName", user.getFullName())
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(getSigningKey()) // HS256 mặc định với SecretKey HMAC

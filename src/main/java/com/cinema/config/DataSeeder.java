@@ -331,49 +331,60 @@ public class DataSeeder implements CommandLineRunner {
      */
     @Transactional
     private void seedCinemasAndRooms() {
-        log.info("Đang seed Cinemas và Rooms...");
-        
-        // Cinema 1: CGV Vincom
-        Cinema cinema1 = new Cinema();
-        cinema1.setName("CGV Vincom");
-        cinema1.setAddress("123 Đường Lê Lợi, Quận 1, TP.HCM");
-        cinema1.setPhone("0123456789");
-        cinema1.setEmail("cgv@example.com");
-        cinema1 = cinemaRepository.save(cinema1);
-        
-        // Rooms cho Cinema 1
-        createRoom(cinema1, "Phòng 1", 10, 10, SeatType.NORMAL);
-        createRoom(cinema1, "Phòng 2", 12, 12, SeatType.NORMAL);
-        createRoom(cinema1, "Phòng 3", 8, 8, SeatType.NORMAL);
-        createRoom(cinema1, "IMAX 1", 15, 20, SeatType.VIP);
-        
-        // Cinema 2: Lotte Cinema
-        Cinema cinema2 = new Cinema();
-        cinema2.setName("Lotte Cinema");
-        cinema2.setAddress("456 Đường Nguyễn Huệ, Quận 1, TP.HCM");
-        cinema2.setPhone("0987654321");
-        cinema2.setEmail("lotte@example.com");
-        cinema2 = cinemaRepository.save(cinema2);
-        
-        // Rooms cho Cinema 2
-        createRoom(cinema2, "Phòng 1", 10, 10, SeatType.NORMAL);
-        createRoom(cinema2, "Phòng 2", 10, 10, SeatType.NORMAL);
-        createRoom(cinema2, "Phòng 3", 12, 12, SeatType.NORMAL);
-        
-        // Cinema 3: Galaxy Cinema
-        Cinema cinema3 = new Cinema();
-        cinema3.setName("Galaxy Cinema");
-        cinema3.setAddress("789 Đường Điện Biên Phủ, Quận Bình Thạnh, TP.HCM");
-        cinema3.setPhone("0912345678");
-        cinema3.setEmail("galaxy@example.com");
-        cinema3 = cinemaRepository.save(cinema3);
-        
-        // Rooms cho Cinema 3
-        createRoom(cinema3, "Phòng 1", 10, 10, SeatType.NORMAL);
-        createRoom(cinema3, "Phòng 2", 10, 10, SeatType.NORMAL);
-        createRoom(cinema3, "Phòng 3", 10, 10, SeatType.NORMAL);
-        
-        log.info("Đã seed 3 cinemas và 10 rooms (tự động tạo ghế)");
+        log.info("Đang seed Cinemas và Rooms (đa chi nhánh)...");
+
+        List<Cinema> cinemas = new ArrayList<>();
+
+        // Một số rạp lớn tại TP.HCM / Hà Nội / Đà Nẵng / Cần Thơ...
+        cinemas.add(createCinema("CGV Vincom Đồng Khởi",
+                "123 Đường Lê Lợi, Quận 1, TP.HCM", "0123456789", "cgv-vincom@example.com"));
+        cinemas.add(createCinema("Lotte Cinema Nguyễn Huệ",
+                "456 Đường Nguyễn Huệ, Quận 1, TP.HCM", "0987654321", "lotte-nguyenhue@example.com"));
+        cinemas.add(createCinema("Galaxy Cinema Điện Biên Phủ",
+                "789 Đường Điện Biên Phủ, Bình Thạnh, TP.HCM", "0912345678", "galaxy-dbp@example.com"));
+        cinemas.add(createCinema("BHD Star Bitexco",
+                "2 Hải Triều, Quận 1, TP.HCM", "0909000111", "bhd-bitexco@example.com"));
+        cinemas.add(createCinema("Cinestar Hai Bà Trưng",
+                "135 Hai Bà Trưng, Quận 3, TP.HCM", "0909000222", "cinestar-hbt@example.com"));
+        cinemas.add(createCinema("CGV Aeon Mall Bình Tân",
+                "1 Đường Số 17A, Bình Trị Đông B, Bình Tân, TP.HCM", "0909000333", "cgv-aeonbt@example.com"));
+        cinemas.add(createCinema("CGV Vincom Bà Triệu",
+                "191 Bà Triệu, Hai Bà Trưng, Hà Nội", "02436668888", "cgv-batrieu@example.com"));
+        cinemas.add(createCinema("Lotte Cinema Tây Sơn",
+                "54A Tây Sơn, Đống Đa, Hà Nội", "02439996666", "lotte-tayson@example.com"));
+        cinemas.add(createCinema("CGV Vincom Đà Nẵng",
+                "910A Ngô Quyền, Sơn Trà, Đà Nẵng", "02363555555", "cgv-danang@example.com"));
+        cinemas.add(createCinema("Beta Cineplex Cầu Giấy",
+                "238 Hoàng Quốc Việt, Cầu Giấy, Hà Nội", "02432223333", "beta-caugiay@example.com"));
+        cinemas.add(createCinema("Galaxy Cần Thơ",
+                "1 Đại lộ Hòa Bình, Ninh Kiều, Cần Thơ", "02923737373", "galaxy-cantho@example.com"));
+        cinemas.add(createCinema("Cinestar Đà Lạt",
+                "40 Trần Phú, Đà Lạt, Lâm Đồng", "02633669988", "cinestar-dalat@example.com"));
+
+        int totalRooms = 0;
+
+        for (int i = 0; i < cinemas.size(); i++) {
+            Cinema cinema = cinemaRepository.save(cinemas.get(i));
+
+            // Tuỳ theo index mà tạo cấu hình phòng khác nhau cho đa dạng
+            if (i % 3 == 0) {
+                createRoom(cinema, "Phòng 1", 10, 10, SeatType.NORMAL);
+                createRoom(cinema, "Phòng 2", 12, 12, SeatType.NORMAL);
+                createRoom(cinema, "IMAX 1", 15, 20, SeatType.VIP);
+                totalRooms += 3;
+            } else if (i % 3 == 1) {
+                createRoom(cinema, "Phòng 1", 8, 12, SeatType.NORMAL);
+                createRoom(cinema, "Phòng 2", 10, 14, SeatType.NORMAL);
+                totalRooms += 2;
+            } else {
+                createRoom(cinema, "Phòng 1", 9, 10, SeatType.NORMAL);
+                createRoom(cinema, "Phòng 2", 9, 10, SeatType.NORMAL);
+                createRoom(cinema, "Phòng 3", 9, 10, SeatType.NORMAL);
+                totalRooms += 3;
+            }
+        }
+
+        log.info("Đã seed {} cinemas và {} rooms (tự động tạo ghế)", cinemas.size(), totalRooms);
     }
 
     /**
@@ -413,7 +424,8 @@ public class DataSeeder implements CommandLineRunner {
                 LocalTime.of(21, 30)
         );
 
-        int daySpan = 5; // rải trong 5 ngày để dễ hợp lý
+        int daySpan = 7; // rải trong 7 ngày để có nhiều showtime hơn
+        LocalDateTime now = LocalDateTime.now();
 
         outer:
         for (int d = 0; d < daySpan; d++) {
@@ -439,6 +451,18 @@ public class DataSeeder implements CommandLineRunner {
                     // random +/- 0-10 phút để nhìn tự nhiên
                     int offset = random.nextBoolean() ? random.nextInt(11) : -random.nextInt(11);
                     LocalDateTime start = date.atTime(slot).plusMinutes(offset);
+                    
+                    // Chỉ tạo showtime trong tương lai (ít nhất 30 phút từ bây giờ)
+                    if (start.isBefore(now.plusMinutes(30))) {
+                        // Nếu là hôm nay và showtime đã qua, skip
+                        if (date.equals(today)) {
+                            continue;
+                        }
+                        // Nếu là ngày khác nhưng vẫn ở quá khứ (không nên xảy ra), skip
+                        if (start.isBefore(now)) {
+                            continue;
+                        }
+                    }
                     // thêm 10 phút buffer dọn phòng
                     LocalDateTime end = start.plusMinutes(durationMinutes + 10L);
 
@@ -512,6 +536,15 @@ public class DataSeeder implements CommandLineRunner {
             }
         }
         seatRepository.saveAll(seats);
+    }
+
+    private Cinema createCinema(String name, String address, String phone, String email) {
+        Cinema cinema = new Cinema();
+        cinema.setName(name);
+        cinema.setAddress(address);
+        cinema.setPhone(phone);
+        cinema.setEmail(email);
+        return cinema;
     }
     
     /**
@@ -693,4 +726,3 @@ public class DataSeeder implements CommandLineRunner {
         return String.format("BK%06d%03d", timestamp, randomNum);
     }
 }
-

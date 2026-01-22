@@ -293,6 +293,15 @@ public class BookingService {
         res.setCreatedAt(booking.getCreatedAt());
         res.setUpdatedAt(booking.getUpdatedAt());
 
+        // User summary
+        if (booking.getUser() != null) {
+            BookingResponse.UserSummary userSummary = new BookingResponse.UserSummary();
+            userSummary.setId(booking.getUser().getId());
+            userSummary.setEmail(booking.getUser().getEmail());
+            userSummary.setFullName(booking.getUser().getFullName());
+            res.setUser(userSummary);
+        }
+
         // Showtime summary
         if (booking.getShowtime() != null) {
             Showtime showtime = booking.getShowtime();
@@ -366,5 +375,11 @@ public class BookingService {
         return "BK" + random;
     }
 }
+
+
+
+
+
+
 
 

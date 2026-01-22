@@ -15,7 +15,13 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, Long> {
     List<Showtime> findByMovieId(Long movieId);
     
     // Tìm suất chiếu theo phim (dùng relationship)
-    List<Showtime> findByMovie_Id(Long movieId);
+    // Eager load Room và Cinema để tránh LazyInitializationException
+    @Query("SELECT s FROM Showtime s " +
+           "JOIN FETCH s.room r " +
+           "JOIN FETCH r.cinema " +
+           "JOIN FETCH s.movie " +
+           "WHERE s.movie.id = :movieId")
+    List<Showtime> findByMovie_Id(@Param("movieId") Long movieId);
     
     // Tìm suất chiếu theo phòng
     List<Showtime> findByRoomId(Long roomId);
@@ -24,7 +30,16 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, Long> {
     List<Showtime> findByRoom_Id(Long roomId);
     
     // Tìm suất chiếu theo ngày (range [startOfDay, endOfDay])
-    List<Showtime> findByStartTimeBetween(LocalDateTime startOfDay, LocalDateTime endOfDay);
+    // Eager load Room và Cinema để tránh LazyInitializationException
+    @Query("SELECT s FROM Showtime s " +
+           "JOIN FETCH s.room r " +
+           "JOIN FETCH r.cinema " +
+           "JOIN FETCH s.movie " +
+           "WHERE s.startTime >= :startOfDay AND s.startTime <= :endOfDay")
+    List<Showtime> findByStartTimeBetween(
+        @Param("startOfDay") LocalDateTime startOfDay,
+        @Param("endOfDay") LocalDateTime endOfDay
+    );
     
     // Kiểm tra xung đột suất chiếu trong cùng phòng
     @Query("SELECT s FROM Showtime s WHERE s.room.id = :roomId " +
@@ -35,4 +50,3 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, Long> {
         @Param("endTime") LocalDateTime endTime
     );
 }
-

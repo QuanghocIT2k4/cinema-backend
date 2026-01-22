@@ -31,9 +31,11 @@ public class MovieController {
     @GetMapping
     public ResponseEntity<Page<MovieResponse>> getAllMovies(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) MovieStatus status) {
         Pageable pageable = PageRequest.of(page, size);
-        Page<MovieResponse> movies = movieService.getAllMovies(pageable);
+        // Nếu có status → dùng searchMovies để lọc theo status
+        Page<MovieResponse> movies = movieService.searchMovies(null, null, status, pageable);
         return ResponseEntity.ok(movies);
     }
     
@@ -44,7 +46,8 @@ public class MovieController {
      */
     @GetMapping("/search")
     public ResponseEntity<Page<MovieResponse>> searchMovies(
-            @RequestParam(required = false) String keyword,
+            // FE đang gửi param 'search', map về biến keyword
+            @RequestParam(name = "search", required = false) String keyword,
             @RequestParam(required = false) String genre,
             @RequestParam(required = false) MovieStatus status,
             @RequestParam(defaultValue = "0") int page,

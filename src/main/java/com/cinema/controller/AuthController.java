@@ -3,6 +3,7 @@ package com.cinema.controller;
 import com.cinema.model.dto.request.ChangePasswordRequest;
 import com.cinema.model.dto.request.LoginRequest;
 import com.cinema.model.dto.request.RegisterRequest;
+import com.cinema.model.dto.request.UpdateProfileRequest;
 import com.cinema.model.dto.response.AuthResponse;
 import com.cinema.model.dto.response.UserResponse;
 import com.cinema.service.AuthService;
@@ -49,6 +50,16 @@ public class AuthController {
     @GetMapping("/me")
     public ResponseEntity<UserResponse> getCurrentUser() {
         UserResponse response = authService.getCurrentUser();
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * PUT /api/auth/profile
+     * Cập nhật profile cho user hiện tại (fullName, phone, address, avatar)
+     */
+    @PutMapping("/profile")
+    public ResponseEntity<UserResponse> updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
+        UserResponse response = authService.updateProfile(request);
         return ResponseEntity.ok(response);
     }
 

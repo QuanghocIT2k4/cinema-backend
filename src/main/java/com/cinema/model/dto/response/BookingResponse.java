@@ -27,6 +27,7 @@ public class BookingResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    private UserSummary user;
     private ShowtimeSummary showtime;
     private List<TicketSummary> tickets;
     private List<BookingRefreshmentSummary> refreshments;
@@ -70,6 +71,13 @@ public class BookingResponse {
         private BigDecimal unitPrice;
         private Integer quantity;
         private BigDecimal totalPrice;
+    }
+
+    @Data
+    public static class UserSummary {
+        private Long id;
+        private String email;
+        private String fullName;
     }
 }
 

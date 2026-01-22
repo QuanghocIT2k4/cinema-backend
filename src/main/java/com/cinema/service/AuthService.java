@@ -3,6 +3,7 @@ package com.cinema.service;
 import com.cinema.model.dto.request.ChangePasswordRequest;
 import com.cinema.model.dto.request.LoginRequest;
 import com.cinema.model.dto.request.RegisterRequest;
+import com.cinema.model.dto.request.UpdateProfileRequest;
 import com.cinema.model.dto.response.AuthResponse;
 import com.cinema.model.dto.response.UserResponse;
 import com.cinema.model.entity.User;
@@ -88,8 +89,8 @@ public class AuthService {
             throw new RuntimeException("Tài khoản đã bị khóa");
         }
         
-        // Tạo JWT token
-        String token = jwtUtils.generateToken(user.getUsername());
+        // Tạo JWT token với đầy đủ claims (id, username, email, role, fullName)
+        String token = jwtUtils.generateToken(user);
         
         // Convert sang UserResponse
         UserResponse userResponse = convertToUserResponse(user);
@@ -158,6 +159,44 @@ public class AuthService {
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
+    }
+
+    /**
+     * Cập nhật profile cho chính user hiện tại (fullName, phone, address, avatar)
+     */
+    @Transactional
+    public UserResponse updateProfile(UpdateProfileRequest request) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new RuntimeException("Chưa đăng nhập");
+        }
+
+        final String username;
+        if (authentication.getPrincipal() instanceof org.springframework.security.core.userdetails.UserDetails userDetails) {
+            username = userDetails.getUsername();
+        } else {
+            username = authentication.getName();
+        }
+
+        User user = userRepository.findByEmail(username)
+                .orElseThrow(() -> new RuntimeException("User không tồn tại với email: " + username));
+
+        if (request.getFullName() != null) {
+            user.setFullName(request.getFullName());
+        }
+        if (request.getPhone() != null) {
+            user.setPhone(request.getPhone());
+        }
+        if (request.getAddress() != null) {
+            user.setAddress(request.getAddress());
+        }
+        if (request.getAvatar() != null) {
+            user.setAvatar(request.getAvatar());
+        }
+
+        User updated = userRepository.save(user);
+        return convertToUserResponse(updated);
     }
     
     /**

@@ -26,13 +26,17 @@ public class ShowtimeRequest {
     @NotNull(message = "Start time không được để trống")
     private LocalDateTime startTime;
 
-    @NotNull(message = "End time không được để trống")
     private LocalDateTime endTime;
 
     @NotNull(message = "Giá vé không được để trống")
     @DecimalMin(value = "0.0", inclusive = false, message = "Giá vé phải lớn hơn 0")
     private BigDecimal price;
 }
+
+
+
+
+
 
 
 

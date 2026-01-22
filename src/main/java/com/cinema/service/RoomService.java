@@ -2,6 +2,7 @@ package com.cinema.service;
 
 import com.cinema.model.dto.request.RoomRequest;
 import com.cinema.model.dto.response.RoomResponse;
+import com.cinema.model.dto.response.SeatResponse;
 import com.cinema.model.entity.Cinema;
 import com.cinema.model.entity.Room;
 import com.cinema.model.entity.Seat;
@@ -73,6 +74,22 @@ public class RoomService {
         Room room = roomRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Room không tồn tại với id: " + id));
         return convertToResponse(room);
+    }
+
+    /**
+     * Lấy danh sách ghế theo room ID (public, không cần admin)
+     */
+    @Transactional(readOnly = true)
+    public List<SeatResponse> getSeatsByRoomId(Long roomId) {
+        // Kiểm tra room tồn tại
+        if (!roomRepository.existsById(roomId)) {
+            throw new RuntimeException("Room không tồn tại với id: " + roomId);
+        }
+        
+        List<Seat> seats = seatRepository.findByRoomId(roomId);
+        return seats.stream()
+                .map(this::convertSeatToResponse)
+                .toList();
     }
     
     /**
@@ -239,7 +256,28 @@ public class RoomService {
         response.setUpdatedAt(room.getUpdatedAt());
         return response;
     }
+
+    /**
+     * Convert Seat entity sang SeatResponse DTO
+     */
+    private SeatResponse convertSeatToResponse(Seat seat) {
+        SeatResponse response = new SeatResponse();
+        response.setId(seat.getId());
+        response.setRoomId(seat.getRoom().getId());
+        response.setSeatNumber(seat.getSeatNumber());
+        response.setRow(seat.getRow());
+        response.setCol(seat.getCol());
+        response.setType(seat.getType());
+        response.setCreatedAt(seat.getCreatedAt());
+        response.setUpdatedAt(seat.getUpdatedAt());
+        return response;
+    }
 }
+
+
+
+
+
 
 
 
