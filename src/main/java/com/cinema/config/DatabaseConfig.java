@@ -2,6 +2,7 @@ package com.cinema.config;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -66,9 +67,10 @@ public class DatabaseConfig {
             return dataSource;
         }
         
-        // Không có env vars → dùng default từ Spring Boot auto-config
+        // Không có env vars → tạo DataSource từ application.properties
         log.info("Using default Spring Boot datasource configuration from application.properties");
-        return null; // Spring Boot sẽ tự động tạo DataSource từ properties
+        DataSourceProperties properties = new DataSourceProperties();
+        return properties.initializeDataSourceBuilder().build();
     }
 
     /**
