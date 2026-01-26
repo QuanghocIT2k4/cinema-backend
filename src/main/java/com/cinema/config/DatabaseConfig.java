@@ -28,7 +28,7 @@ public class DatabaseConfig {
     public DataSourceProperties dataSourceProperties() {
         DataSourceProperties properties = new DataSourceProperties();
         
-        // Auto-detect driver từ URL
+        // Auto-detect driver và dialect từ URL
         String driverClassName = detectDriverFromUrl(datasourceUrl);
         properties.setDriverClassName(driverClassName);
         
