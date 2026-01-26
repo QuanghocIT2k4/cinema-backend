@@ -11,8 +11,9 @@ import org.springframework.context.annotation.Primary;
 import javax.sql.DataSource;
 
 /**
- * Configuration để tự động detect database type từ DATABASE_URL hoặc MYSQL_URL
- * Railway MySQL inject: MYSQL_URL hoặc DATABASE_URL
+ * Configuration để tự động detect database type từ DATABASE_URL
+ * Render inject: DATABASE_URL (PostgreSQL)
+ * Railway inject: MYSQL_URL hoặc DATABASE_URL
  * Tự động set driver class name và build URL nếu cần
  */
 @Configuration
@@ -52,7 +53,7 @@ public class DatabaseConfig {
             String driverClassName = detectDriverFromUrl(finalUrl);
             properties.setUrl(finalUrl);
             properties.setDriverClassName(driverClassName);
-            log.info("Using Railway/Production database config");
+            log.info("Using Render/Railway/Production database config");
             log.info("Database URL: {}", finalUrl.replaceAll(":[^:@]+@", ":****@"));
             log.info("Auto-detected driver: {}", driverClassName);
         } else {

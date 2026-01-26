@@ -19,12 +19,12 @@ WORKDIR /app
 # Copy JAR từ build stage
 COPY --from=build /app/target/cinema-backend-*.jar app.jar
 
-# Expose port (Railway tự động map PORT env var)
+# Expose port (Render tự động map PORT env var)
 EXPOSE 8080
 
 # Run app với production profile
-# Railway tự động set PORT env var
-# SPRING_PROFILES_ACTIVE sẽ được set từ Railway env vars (set trong Variables tab)
+# Render tự động set PORT env var
+# SPRING_PROFILES_ACTIVE sẽ được set từ Render env vars (set trong Environment tab)
 ENTRYPOINT ["java", "-jar", "app.jar"]
 
 
