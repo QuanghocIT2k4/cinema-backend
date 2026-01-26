@@ -1,5 +1,5 @@
 # Multi-stage build để giảm kích thước image
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM maven:3.9-eclipse-temurin-17 AS build
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ COPY src ./src
 RUN mvn clean package -DskipTests
 
 # Runtime stage
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:17-jre-alpine
 
 WORKDIR /app
 
@@ -22,8 +22,8 @@ COPY --from=build /app/target/cinema-backend-*.jar app.jar
 # Expose port
 EXPOSE 8080
 
-# Run app
-ENTRYPOINT ["java", "-jar", "app.jar", "--spring.profiles.active=production"]
+# Run app với production profile
+ENTRYPOINT ["java", "-jar", "app.jar"]
 
 
 
