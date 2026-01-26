@@ -6,6 +6,7 @@ import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Order;
 import org.springframework.context.annotation.Primary;
 
 import javax.sql.DataSource;
@@ -18,6 +19,7 @@ import javax.sql.DataSource;
  */
 @Configuration
 @Slf4j
+@Order(1) // Chạy trước các config khác để override driver
 public class DatabaseConfig {
 
     @Value("${DATABASE_URL:}")
@@ -52,10 +54,12 @@ public class DatabaseConfig {
             // Có env vars → override
             String driverClassName = detectDriverFromUrl(finalUrl);
             properties.setUrl(finalUrl);
+            // QUAN TRỌNG: Phải set driver trước khi Spring Boot init
             properties.setDriverClassName(driverClassName);
-            log.info("Using Render/Railway/Production database config");
+            log.info("=== Using Render/Railway/Production database config ===");
             log.info("Database URL: {}", finalUrl.replaceAll(":[^:@]+@", ":****@"));
             log.info("Auto-detected driver: {}", driverClassName);
+            log.info("=== Overriding driver from application.properties ===");
         } else {
             // Không có env vars → dùng default từ application.properties
             log.info("Using local database config from application.properties");
