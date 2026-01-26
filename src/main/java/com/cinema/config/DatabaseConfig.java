@@ -39,6 +39,18 @@ public class DatabaseConfig {
     
     @Value("${MYSQL_PASSWORD:}")
     private String mysqlPassword;
+    
+    @Value("${spring.datasource.url:}")
+    private String datasourceUrl;
+    
+    @Value("${spring.datasource.username:}")
+    private String datasourceUsername;
+    
+    @Value("${spring.datasource.password:}")
+    private String datasourcePassword;
+    
+    @Value("${spring.datasource.driver-class-name:com.mysql.cj.jdbc.Driver}")
+    private String datasourceDriver;
 
     @Bean
     @Primary
@@ -69,8 +81,17 @@ public class DatabaseConfig {
         
         // Không có env vars → tạo DataSource từ application.properties
         log.info("Using default Spring Boot datasource configuration from application.properties");
-        DataSourceProperties properties = new DataSourceProperties();
-        return properties.initializeDataSourceBuilder().build();
+        
+        HikariDataSource dataSource = new HikariDataSource();
+        dataSource.setJdbcUrl(datasourceUrl);
+        dataSource.setUsername(datasourceUsername);
+        dataSource.setPassword(datasourcePassword);
+        dataSource.setDriverClassName(datasourceDriver);
+        dataSource.setMaximumPoolSize(10);
+        dataSource.setMinimumIdle(2);
+        dataSource.setConnectionTimeout(30000);
+        
+        return dataSource;
     }
 
     /**
