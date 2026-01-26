@@ -15,6 +15,14 @@ import java.util.Map;
 @RequestMapping("/api")
 public class ApiInfoController {
 
+    @GetMapping("/health")
+    public ResponseEntity<Map<String, String>> health() {
+        Map<String, String> health = new LinkedHashMap<>();
+        health.put("status", "UP");
+        health.put("service", "Cinema Booking System API");
+        return ResponseEntity.ok(health);
+    }
+
     @GetMapping
     public ResponseEntity<Map<String, Object>> getApiInfo() {
         Map<String, Object> apiInfo = new LinkedHashMap<>();

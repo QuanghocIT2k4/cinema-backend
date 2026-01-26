@@ -56,7 +56,7 @@ public class Movie {
     @Column(length = 255)
     private String director; // Đạo diễn
 
-    @Column(length = 1000)
+    @Column(name = "movie_cast", length = 1000)
     private String cast; // Danh sách diễn viên, ngăn cách bằng dấu phẩy
 
     @CreationTimestamp
