@@ -4,31 +4,19 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * DTO trả về thông tin Ticket
+ * DTO cho response trả về thông tin Review
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class TicketResponse {
+public class ReviewResponse {
     private Long id;
-    private Long bookingId;
-    private Long seatId;
-    private String seatNumber;
-    private String row;
-    private Integer col;
-    private BigDecimal price;
+    private String authorName;
+    private Integer rating;
+    private String comment;
     private LocalDateTime createdAt;
 }
-
-
-
-
-
-
-
-
 

@@ -60,6 +60,8 @@ public class SecurityConfig {
                         // Cho phép public endpoints không cần authentication
                         .requestMatchers("/api").permitAll() // API info endpoint
                         .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
+                        // Cho phép public access đến images (actor photos, posters, etc.)
+                        .requestMatchers(HttpMethod.GET, "/api/images/**").permitAll()
                         // GET movies public (chỉ GET method)
                         .requestMatchers(HttpMethod.GET, "/api/movies/**").permitAll()
                         // POST/PUT/DELETE movies cần authentication (check Admin trong Service)

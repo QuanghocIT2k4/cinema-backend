@@ -1,46 +1,19 @@
-# Render Blueprint Configuration
-# File này giúp Render tự động setup service khi bạn connect GitHub repo
-
 services:
   - type: web
-    name: cinema-backend-api
-    runtime: java
-    plan: free  # Hoặc starter/standard nếu muốn
-    buildCommand: ./mvnw clean package -DskipTests
-    startCommand: java -jar target/cinema-backend-*.jar --spring.profiles.active=production
+    name: cinema-backend
+    env: java
+    buildCommand: chmod +x ./mvnw && ./mvnw clean package -DskipTests || mvn clean package -DskipTests
+    startCommand: java -jar target/cinema-backend-1.0.0.jar
     envVars:
       - key: SPRING_PROFILES_ACTIVE
         value: production
-      - key: PORT
-        fromService:
-          type: web
-          name: cinema-backend-api
-          property: port
-      - key: DB_HOST
-        sync: false  # Bạn sẽ set thủ công sau khi tạo MySQL database
-      - key: DB_PORT
-        value: "3306"
-      - key: DB_NAME
-        sync: false
-      - key: DB_USERNAME
-        sync: false
-      - key: DB_PASSWORD
-        sync: false
       - key: JWT_SECRET
-        generateValue: true  # Render tự generate secret
+        generateValue: true
       - key: JWT_EXPIRATION_MS
-        value: "86400000"
+        value: 86400000
+      - key: SERVER_PORT
+        value: 8080
       - key: ALLOWED_ORIGINS
-        sync: false  # Set sau khi có URL Vercel
-
-databases:
-  - name: cinema-db
-    plan: free  # MySQL free tier
-    databaseName: cinema_db
-
-
-
-
-
-
-
+        sync: false  # Sẽ set thủ công sau khi có frontend URL từ Vercel
+      # DATABASE_URL: Set thủ công trong Render Dashboard sau khi tạo database
+      # Format: postgresql://user:password@host:port/dbname

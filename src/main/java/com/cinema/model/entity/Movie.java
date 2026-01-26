@@ -53,6 +53,12 @@ public class Movie {
     @Column(name = "age_rating", length = 10)
     private String ageRating; // G, PG, PG-13, R
 
+    @Column(length = 255)
+    private String director; // Đạo diễn
+
+    @Column(length = 1000)
+    private String cast; // Danh sách diễn viên, ngăn cách bằng dấu phẩy
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -64,5 +70,18 @@ public class Movie {
     // Relationships
     @OneToMany(mappedBy = "movie", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<Showtime> showtimes;
+
+    /**
+     * Danh sách diễn viên của phim (MovieActor)
+     * Thiết kế hiện tại: mỗi MovieActor lưu trực tiếp name + avatarUrl.
+     */
+    @OneToMany(mappedBy = "movie", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<MovieActor> movieActors;
+
+    /**
+     * Danh sách review của phim
+     */
+    @OneToMany(mappedBy = "movie", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<Review> reviews;
 }
 

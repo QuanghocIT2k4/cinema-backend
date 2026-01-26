@@ -26,9 +26,12 @@ public class MovieResponse {
     private LocalDate endDate;
     private MovieStatus status;
     private String ageRating;
+    private String director;
+    private String cast;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
+
 
 
 

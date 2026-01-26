@@ -49,7 +49,14 @@ public class MovieRequest {
     
     @Size(max = 10, message = "Độ tuổi không được vượt quá 10 ký tự")
     private String ageRating; // G, PG, PG-13, R
+
+    @Size(max = 255, message = "Tên đạo diễn không được vượt quá 255 ký tự")
+    private String director;
+
+    @Size(max = 1000, message = "Danh sách diễn viên không được vượt quá 1000 ký tự")
+    private String cast; // Danh sách diễn viên, ngăn cách bởi dấu phẩy
 }
+
 
 
 

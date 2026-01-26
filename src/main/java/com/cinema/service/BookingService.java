@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -177,7 +178,8 @@ public class BookingService {
 
     public Page<BookingResponse> getBookings(BookingStatus status, int page, int size) {
         CustomUserDetails currentUser = getCurrentUser();
-        Pageable pageable = PageRequest.of(page, size);
+        // Sắp xếp theo ngày tạo mới nhất (DESC)
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         if (currentUser.getUser().getRole() == UserRole.ADMIN) {
             Page<Booking> bookingPage;

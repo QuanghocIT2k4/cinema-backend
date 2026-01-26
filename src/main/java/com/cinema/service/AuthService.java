@@ -179,8 +179,8 @@ public class AuthService {
             username = authentication.getName();
         }
 
-        User user = userRepository.findByEmail(username)
-                .orElseThrow(() -> new RuntimeException("User không tồn tại với email: " + username));
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User không tồn tại với username: " + username));
 
         if (request.getFullName() != null) {
             user.setFullName(request.getFullName());

@@ -18,7 +18,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.File;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
@@ -38,11 +40,13 @@ public class DataSeeder implements CommandLineRunner {
     
     private final UserRepository userRepository;
     private final MovieRepository movieRepository;
+    private final MovieActorRepository movieActorRepository;
     private final CinemaRepository cinemaRepository;
     private final RoomRepository roomRepository;
     private final SeatRepository seatRepository;
     private final ShowtimeRepository showtimeRepository;
     private final RefreshmentRepository refreshmentRepository;
+    private final ReviewRepository reviewRepository;
     private final BookingRepository bookingRepository;
     private final TicketRepository ticketRepository;
     private final BookingRefreshmentRepository bookingRefreshmentRepository;
@@ -53,55 +57,135 @@ public class DataSeeder implements CommandLineRunner {
     @Override
     public void run(String... args) {
         log.info("=== BẮT ĐẦU SEED DATA ===");
-        
-        // Chỉ seed nếu database rỗng
+
+        // Trường hợp 1: DB đã có users/movies nhưng có thể thiếu một số data
+        // → seed các phần còn thiếu
         if (userRepository.count() > 0) {
-            log.info("Database đã có dữ liệu, bỏ qua seed data");
+            log.info("Database đã có dữ liệu. Kiểm tra và seed các phần còn thiếu...");
+            
+            // Seed movie_actors nếu chưa có hoặc thiếu avatar_url
+            if (movieActorRepository.count() == 0 && movieRepository.count() > 0) {
+                log.info("Seed bảng movie_actors từ cast của movie...");
+                try {
+                    seedMovieActorsFromExistingMovies();
+                } catch (Exception e) {
+                    log.error("Lỗi khi seed MovieActors từ dữ liệu hiện có: {}", e.getMessage(), e);
+                }
+            } else {
+                // Update avatar_url nếu thiếu
+                boolean hasDataWithoutAvatar = movieActorRepository.findAll().stream()
+                        .anyMatch(ma -> ma.getAvatarUrl() == null);
+                if (hasDataWithoutAvatar) {
+                    log.info("Phát hiện movie_actors thiếu avatar_url, sẽ update...");
+                    try {
+                        seedMovieActorsFromExistingMovies();
+                    } catch (Exception e) {
+                        log.error("Lỗi khi update MovieActors avatar_url: {}", e.getMessage(), e);
+                    }
+                }
+            }
+            
+            // Seed showtimes: nếu quá ít thì xóa và seed lại
+            long showtimeCount = showtimeRepository.count();
+            long expectedMinShowtimes = movieRepository.count() * 8 * 7; // Mỗi phim 8 suất/ngày × 7 ngày tối thiểu
+            
+            if (showtimeCount == 0 || showtimeCount < expectedMinShowtimes) {
+                log.info("Showtimes hiện có {} suất (mong đợi tối thiểu {}), sẽ xóa và seed lại...", 
+                        showtimeCount, expectedMinShowtimes);
+                try {
+                    // Xóa showtimes cũ (và các bảng liên quan nếu cần)
+                    if (showtimeCount > 0) {
+                        log.info("Đang xóa {} showtimes cũ...", showtimeCount);
+                        // Xóa các bảng liên quan theo đúng thứ tự FK
+                        bookingRefreshmentRepository.deleteAll();
+                        ticketRepository.deleteAll();
+                        bookingRepository.deleteAll();
+                        // Sau đó xóa showtimes
+                        showtimeRepository.deleteAll();
+                        log.info("Đã xóa showtimes cũ thành công");
+                    }
+                    // Seed lại showtimes
+                    seedShowtimes();
+                } catch (Exception e) {
+                    log.error("Lỗi khi seed Showtimes: {}", e.getMessage(), e);
+                }
+            } else {
+                log.info("Showtimes đã có đủ ({} suất chiếu), bỏ qua seed.", showtimeCount);
+            }
+            
+            // Seed reviews nếu chưa có
+            long reviewCount = reviewRepository.count();
+            if (reviewCount == 0 && movieRepository.count() > 0) {
+                log.info("Seed reviews (hiện có {} reviews)...", reviewCount);
+                try {
+                    seedReviews();
+                } catch (Exception e) {
+                    log.error("Lỗi khi seed Reviews: {}", e.getMessage(), e);
+                }
+            } else {
+                log.info("Reviews đã có ({}), bỏ qua seed.", reviewCount);
+            }
+
             return;
         }
-        
+
+        // Trường hợp 2: Database rỗng → seed full data như cũ
         // Seed từng phần riêng biệt với try-catch để nếu một phần fail thì các phần khác vẫn chạy được
         try {
-        seedUsers();
+            seedUsers();
         } catch (Exception e) {
             log.error("Lỗi khi seed Users: {}", e.getMessage(), e);
         }
-        
+
         try {
-        seedMovies();
+            seedMovies();
         } catch (Exception e) {
             log.error("Lỗi khi seed Movies: {}", e.getMessage(), e);
         }
-        
+
         try {
-        seedCinemasAndRooms();
+            seedCinemasAndRooms();
         } catch (Exception e) {
             log.error("Lỗi khi seed Cinemas và Rooms: {}", e.getMessage(), e);
         }
-        
+
         try {
-        seedRefreshments();
+            seedRefreshments();
         } catch (Exception e) {
             log.error("Lỗi khi seed Refreshments: {}", e.getMessage(), e);
         }
-        
+
         try {
-        seedShowtimes();
+            seedShowtimes();
         } catch (Exception e) {
             log.error("Lỗi khi seed Showtimes: {}", e.getMessage(), e);
         }
-        
+
         try {
-        seedBookings();
+            seedBookings();
         } catch (Exception e) {
             log.error("Lỗi khi seed Bookings: {}", e.getMessage(), e);
         }
-        
+
+        // Sau khi seed movies xong cho DB rỗng → sinh movie_actors từ cast
+        try {
+            seedMovieActorsFromExistingMovies();
+        } catch (Exception e) {
+            log.error("Lỗi khi seed MovieActors sau khi seed Movies: {}", e.getMessage(), e);
+        }
+
+        // Seed reviews cho mỗi movie
+        try {
+            seedReviews();
+        } catch (Exception e) {
+            log.error("Lỗi khi seed Reviews: {}", e.getMessage(), e);
+        }
+
         log.info("=== HOÀN THÀNH SEED DATA ===");
         log.info("Tổng kết:");
         long adminCount = userRepository.findAll().stream().filter(u -> u.getRole() == UserRole.ADMIN).count();
         long customerCount = userRepository.findAll().stream().filter(u -> u.getRole() == UserRole.CUSTOMER).count();
-        log.info("- Users: {} ({} Admin + {} Customer)", 
+        log.info("- Users: {} ({} Admin + {} Customer)",
                 userRepository.count(), adminCount, customerCount);
         log.info("- Movies: {}", movieRepository.count());
         log.info("- Cinemas: {}", cinemaRepository.count());
@@ -126,7 +210,7 @@ public class DataSeeder implements CommandLineRunner {
         String[] adminEmails = {"admin@cinema.vn", "admin2@cinema.vn", "admin3@cinema.vn"};
         for (int i = 0; i < 3; i++) {
             User admin = new User();
-            admin.setUsername("admin" + (i == 0 ? "" : (i + 1)));
+            admin.setUsername("admin" + (i == 0 ? "" : String.valueOf(i + 1)));
             admin.setEmail(adminEmails[i]);
             admin.setPassword(passwordEncoder.encode("admin123"));
             admin.setFullName(adminNames[i]);
@@ -209,6 +293,42 @@ public class DataSeeder implements CommandLineRunner {
                         String poster = movieData.containsKey("poster_file") ? (String) movieData.get("poster_file") : "https://via.placeholder.com/500x750";
                         String trailer = movieData.containsKey("trailer_url") ? (String) movieData.get("trailer_url") : "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
                         String ageRating = movieData.containsKey("age_limit") ? "PG-" + movieData.get("age_limit") : "PG-13";
+
+                        // Đọc director từ JSON
+                        String director = "Unknown Director";
+                        if (movieData.containsKey("directors") && movieData.get("directors") instanceof List) {
+                            List<?> directors = (List<?>) movieData.get("directors");
+                            if (!directors.isEmpty()) {
+                                director = directors.get(0).toString();
+                            }
+                        } else if (movieData.containsKey("director")) {
+                            director = movieData.get("director").toString();
+                        } else {
+                            director = getDefaultDirector(name);
+                        }
+
+                        // Đọc actors từ JSON (field "actors" là array)
+                        String cast = "";
+                        if (movieData.containsKey("actors") && movieData.get("actors") instanceof List) {
+                            List<?> actors = (List<?>) movieData.get("actors");
+                            List<String> actorNames = new ArrayList<>();
+                            for (Object actorObj : actors) {
+                                if (actorObj instanceof Map) {
+                                    Map<?, ?> actorMap = (Map<?, ?>) actorObj;
+                                    if (actorMap.containsKey("name")) {
+                                        actorNames.add(actorMap.get("name").toString());
+                                    }
+                                }
+                            }
+                            if (!actorNames.isEmpty()) {
+                                cast = String.join(", ", actorNames);
+                            }
+                        }
+                        
+                        // Fallback nếu không có actors trong JSON
+                        if (cast.isEmpty()) {
+                            cast = getDefaultCast(name);
+                        }
                         
                         // Phân bổ release date dựa trên index để có đủ 3 loại phim:
                         // 30% ENDED (phim cũ), 50% NOW_SHOWING (đang chiếu), 20% COMING_SOON (sắp chiếu)
@@ -233,8 +353,12 @@ public class DataSeeder implements CommandLineRunner {
                             endDate = releaseDate.plusDays(60);
                             status = MovieStatus.COMING_SOON;
                         }
-                        
-                        movies.add(createMovie(name, genre, duration, description, poster, trailer, releaseDate, endDate, status, ageRating));
+
+                        movies.add(createMovie(
+                                name, genre, duration, description,
+                                poster, trailer, releaseDate, endDate,
+                                status, ageRating, director, cast
+                        ));
                     } catch (Exception e) {
                         log.warn("Lỗi khi parse movie từ JSON: {}", e.getMessage());
                     }
@@ -297,11 +421,21 @@ public class DataSeeder implements CommandLineRunner {
                 endDate = releaseDate.plusDays(60);
             }
             
-            movies.add(createMovie(title, genre, duration, 
-                    "Mô tả phim " + title, 
-                    "https://via.placeholder.com/500x750",
-                    "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-                    releaseDate, endDate, status, "PG-13"));
+            String description = "Mô tả phim " + title;
+            String poster = "https://via.placeholder.com/500x750";
+            String trailer = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+
+            String director = getDefaultDirector(title);
+            String cast = getDefaultCast(title);
+
+            movies.add(createMovie(
+                    title, genre, duration,
+                    description,
+                    poster,
+                    trailer,
+                    releaseDate, endDate, status, "PG-13",
+                    director, cast
+            ));
         }
     }
     
@@ -311,7 +445,8 @@ public class DataSeeder implements CommandLineRunner {
     private Movie createMovie(String title, String genre, Integer duration,
                               String description, String poster, String trailer,
                               LocalDate releaseDate, LocalDate endDate,
-                              MovieStatus status, String ageRating) {
+                              MovieStatus status, String ageRating,
+                              String director, String cast) {
         Movie movie = new Movie();
         movie.setTitle(title);
         movie.setGenre(genre);
@@ -323,7 +458,260 @@ public class DataSeeder implements CommandLineRunner {
         movie.setEndDate(endDate);
         movie.setStatus(status);
         movie.setAgeRating(ageRating);
+        movie.setDirector(director);
+        movie.setCast(cast);
         return movie;
+    }
+
+    /**
+     * Map title -> director
+     */
+    private String getDefaultDirector(String title) {
+        if (title == null) return "Unknown Director";
+        String t = title.toLowerCase();
+
+        if (t.contains("avengers")) return "Anthony & Joe Russo";
+        if (t.contains("spider-man") || t.contains("spider man")) return "Jon Watts";
+        if (t.contains("matrix")) return "Lana Wachowski";
+        if (t.contains("fast & furious") || t.contains("fast and furious") || t.contains("fast & furious 10"))
+            return "Justin Lin";
+        if (t.contains("dune")) return "Denis Villeneuve";
+        if (t.contains("top gun")) return "Joseph Kosinski";
+        if (t.contains("no time to die")) return "Cary Joji Fukunaga";
+        if (t.contains("conjuring")) return "James Wan";
+        if (t.contains("encanto")) return "Jared Bush & Byron Howard";
+        if (t.contains("avatar")) return "James Cameron";
+        if (t.contains("black panther")) return "Ryan Coogler";
+        if (t.contains("batman")) return "Matt Reeves";
+        if (t.contains("doctor strange")) return "Sam Raimi";
+        if (t.contains("thor")) return "Taika Waititi";
+        if (t.contains("black widow")) return "Cate Shortland";
+        if (t.contains("shang-chi") || t.contains("shang chi")) return "Destin Daniel Cretton";
+        if (t.contains("eternals")) return "Chloé Zhao";
+        if (t.contains("doraemon")) return "Ryuichi Yagi & Takashi Yamazaki";
+
+        return "Unknown Director";
+    }
+
+    /**
+     * Map title -> cast (main actors)
+     */
+    private String getDefaultCast(String title) {
+        if (title == null) return "Unknown Cast";
+        String t = title.toLowerCase();
+
+        if (t.contains("avengers")) return "Robert Downey Jr., Chris Evans, Chris Hemsworth, Scarlett Johansson";
+        if (t.contains("spider-man") || t.contains("spider man"))
+            return "Tom Holland, Zendaya, Benedict Cumberbatch";
+        if (t.contains("matrix")) return "Keanu Reeves, Carrie-Anne Moss";
+        if (t.contains("fast & furious") || t.contains("fast and furious") || t.contains("fast & furious 10"))
+            return "Vin Diesel, Michelle Rodriguez, Tyrese Gibson";
+        if (t.contains("dune")) return "Timothée Chalamet, Zendaya, Oscar Isaac";
+        if (t.contains("top gun")) return "Tom Cruise, Miles Teller";
+        if (t.contains("no time to die")) return "Daniel Craig, Léa Seydoux, Rami Malek";
+        if (t.contains("conjuring")) return "Vera Farmiga, Patrick Wilson";
+        if (t.contains("encanto")) return "Stephanie Beatriz, María Cecilia Botero";
+        if (t.contains("avatar")) return "Sam Worthington, Zoe Saldana, Sigourney Weaver";
+        if (t.contains("black panther")) return "Chadwick Boseman, Michael B. Jordan, Lupita Nyong'o";
+        if (t.contains("batman")) return "Robert Pattinson, Zoë Kravitz";
+        if (t.contains("doctor strange")) return "Benedict Cumberbatch, Elizabeth Olsen";
+        if (t.contains("thor")) return "Chris Hemsworth, Natalie Portman, Tessa Thompson";
+        if (t.contains("black widow")) return "Scarlett Johansson, Florence Pugh";
+        if (t.contains("shang-chi") || t.contains("shang chi"))
+            return "Simu Liu, Awkwafina, Tony Leung";
+        if (t.contains("eternals")) return "Gemma Chan, Richard Madden, Angelina Jolie";
+        if (t.contains("doraemon")) return "Wasabi Mizuta, Megumi Ohara";
+
+        return "Unknown Cast";
+    }
+
+    /**
+     * Sinh dữ liệu movie_actors từ field cast của từng movie.
+     * - Split theo dấu phẩy
+     * - Trim khoảng trắng
+     * - Tìm ảnh actor từ folder cinema-data/actor_photos và match theo tên
+     * - Lưu URL ảnh vào avatarUrl
+     * - Nếu đã có data nhưng avatar_url = null, sẽ update lại
+     */
+    @Transactional
+    public void seedMovieActorsFromExistingMovies() {
+        log.info("Đang seed MovieActors từ field cast của Movie...");
+
+        // Kiểm tra xem có cần update avatar_url cho data cũ không
+        boolean hasDataWithoutAvatar = movieActorRepository.count() > 0 && 
+                movieActorRepository.findAll().stream().anyMatch(ma -> ma.getAvatarUrl() == null);
+        
+        if (movieActorRepository.count() > 0 && !hasDataWithoutAvatar) {
+            log.info("Bảng movie_actors đã có dữ liệu và đã có avatar_url ({} bản ghi), bỏ qua seed.", 
+                    movieActorRepository.count());
+            return;
+        }
+        
+        if (hasDataWithoutAvatar) {
+            log.info("Phát hiện data cũ chưa có avatar_url, sẽ update lại...");
+        }
+
+        List<Movie> movies = movieRepository.findAll();
+        if (movies.isEmpty()) {
+            log.warn("Không có movie nào, bỏ qua seed MovieActors.");
+            return;
+        }
+
+        // Đọc danh sách file ảnh từ folder cinema-data/actor_photos
+        // Thử nhiều đường dẫn: relative từ project root, hoặc từ parent directory
+        Path actorPhotosPath = null;
+        Path[] possiblePaths = {
+            Paths.get("cinema-data", "actor_photos"),  // Từ project root
+            Paths.get("..", "cinema-data", "actor_photos"),  // Từ cinema-backend folder
+            Paths.get(System.getProperty("user.dir"), "cinema-data", "actor_photos"),  // Absolute từ working dir
+            Paths.get(System.getProperty("user.dir"), "..", "cinema-data", "actor_photos")  // Absolute từ parent
+        };
+        
+        for (Path path : possiblePaths) {
+            if (Files.exists(path) && Files.isDirectory(path)) {
+                actorPhotosPath = path;
+                log.info("Tìm thấy folder actor_photos tại: {}", path.toAbsolutePath());
+                break;
+            }
+        }
+        
+        Map<String, String> actorPhotoMap = new HashMap<>();
+        
+        if (actorPhotosPath != null) {
+            try {
+                Files.list(actorPhotosPath)
+                    .filter(Files::isRegularFile)
+                    .filter(p -> p.toString().toLowerCase().endsWith(".jpg"))
+                    .forEach(photoPath -> {
+                        String fileName = photoPath.getFileName().toString().toLowerCase();
+                        // Lưu mapping: tên file (lowercase) -> đường dẫn file
+                        actorPhotoMap.put(fileName, photoPath.toString());
+                    });
+                log.info("Đã load {} file ảnh actor từ folder local", actorPhotoMap.size());
+            } catch (IOException e) {
+                log.warn("Không thể đọc folder actor_photos: {}", e.getMessage());
+            }
+        } else {
+            log.warn("Folder actor_photos không tìm thấy. Đã thử các đường dẫn:");
+            for (Path path : possiblePaths) {
+                log.warn("  - {}", path.toAbsolutePath());
+            }
+        }
+
+        List<MovieActor> movieActors = new ArrayList<>();
+        List<MovieActor> existingActors = movieActorRepository.findAll();
+        Map<String, MovieActor> existingMap = new HashMap<>();
+        
+        // Tạo map các actor đã tồn tại: key = movieId_actorName
+        for (MovieActor existing : existingActors) {
+            String key = existing.getMovie().getId() + "_" + existing.getName().toLowerCase();
+            existingMap.put(key, existing);
+        }
+        
+        Set<String> processedActors = new HashSet<>(); // Để tránh duplicate
+
+        for (Movie movie : movies) {
+            String cast = movie.getCast();
+            if (cast == null || cast.trim().isEmpty() || "Unknown Cast".equalsIgnoreCase(cast.trim())) {
+                continue;
+            }
+
+            String[] names = cast.split(",");
+            for (String rawName : names) {
+                String name = rawName.trim();
+                if (name.isEmpty()) continue;
+
+                // Tạo key để check duplicate (movie_id + actor_name)
+                String uniqueKey = movie.getId() + "_" + name.toLowerCase();
+                if (processedActors.contains(uniqueKey)) {
+                    continue; // Đã xử lý actor này cho movie này rồi
+                }
+                processedActors.add(uniqueKey);
+
+                MovieActor ma;
+                // Nếu đã có actor này rồi, lấy ra để update avatar_url
+                if (existingMap.containsKey(uniqueKey)) {
+                    ma = existingMap.get(uniqueKey);
+                } else {
+                    // Tạo mới
+                    ma = new MovieActor();
+                    ma.setMovie(movie);
+                    ma.setName(name);
+                }
+                
+                // Tìm ảnh actor từ folder local (có thể match theo movie_id hoặc tên actor)
+                String avatarUrl = findActorPhoto(name, movie.getId(), actorPhotoMap);
+                
+                // Chỉ update nếu chưa có avatar_url hoặc tìm thấy ảnh mới
+                if (ma.getAvatarUrl() == null || avatarUrl != null) {
+                    ma.setAvatarUrl(avatarUrl);
+                }
+                
+                if (avatarUrl != null) {
+                    log.debug("Đã tìm thấy ảnh cho actor: {} (movie: {}) -> {}", name, movie.getId(), avatarUrl);
+                } else {
+                    log.debug("Không tìm thấy ảnh cho actor: {} (movie: {})", name, movie.getId());
+                }
+                
+                movieActors.add(ma);
+            }
+        }
+
+        if (movieActors.isEmpty()) {
+            log.warn("Không tìm được diễn viên nào từ field cast, không insert bản ghi MovieActor.");
+            return;
+        }
+
+        movieActorRepository.saveAll(movieActors);
+        long withPhoto = movieActors.stream().filter(ma -> ma.getAvatarUrl() != null).count();
+        log.info("Đã seed/update {} bản ghi movie_actors từ dữ liệu cast của movies ({} có ảnh).", 
+                movieActors.size(), withPhoto);
+    }
+    
+    /**
+     * Tìm ảnh actor từ folder local dựa trên tên actor.
+     * Format file: {movie_id_from_json}_{Actor_Name}.jpg
+     * 
+     * Logic match giống Example: fileName.toLowerCase().includes(actorName.toLowerCase().replace(/\s+/g, '_'))
+     */
+    private String findActorPhoto(String actorName, Long movieId, Map<String, String> actorPhotoMap) {
+        if (actorName == null || actorName.trim().isEmpty() || actorPhotoMap.isEmpty()) {
+            return null;
+        }
+        
+        // Chuẩn hóa tên actor: lowercase, thay space bằng underscore (giống Example)
+        String normalizedName = actorName.toLowerCase()
+                .replaceAll("\\s+", "_")
+                .replaceAll("[^a-z0-9_]", "");
+        
+        // Tìm file match: fileName.toLowerCase().includes(normalizedName)
+        for (Map.Entry<String, String> entry : actorPhotoMap.entrySet()) {
+            String fileName = entry.getKey(); // Đã là lowercase rồi
+            
+            // Check nếu tên file chứa tên actor đã normalized (giống Example)
+            if (fileName.contains(normalizedName)) {
+                Path photoPath = Paths.get(entry.getValue());
+                String originalFileName = photoPath.getFileName().toString();
+                return "/api/images/actors/" + originalFileName;
+            }
+        }
+        
+        // Nếu không tìm thấy exact match, thử match theo các phần của tên
+        String[] nameParts = normalizedName.split("_");
+        for (String part : nameParts) {
+            if (part.length() < 3) continue; // Bỏ qua phần quá ngắn
+            
+            for (Map.Entry<String, String> entry : actorPhotoMap.entrySet()) {
+                String fileName = entry.getKey();
+                if (fileName.contains(part)) {
+                    Path photoPath = Paths.get(entry.getValue());
+                    String originalFileName = photoPath.getFileName().toString();
+                    return "/api/images/actors/" + originalFileName;
+                }
+            }
+        }
+        
+        return null;
     }
     
     /**
@@ -388,12 +776,12 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     /**
-     * Seed Showtime: 20-30 suất chiếu mẫu, phân bổ theo nhiều phòng và nhiều phim,
-     * đảm bảo không xung đột thời gian trong cùng phòng.
+     * Seed Showtime: Mỗi phim 8-9 suất chiếu mỗi ngày, trong 7-14 ngày
+     * Đảm bảo không xung đột thời gian trong cùng phòng.
      */
     @Transactional
     private void seedShowtimes() {
-        log.info("Đang seed Showtimes...");
+        log.info("Đang seed Showtimes (nhiều suất chiếu cho mỗi phim)...");
 
         List<Room> rooms = roomRepository.findAll();
         if (rooms.isEmpty()) {
@@ -401,96 +789,107 @@ public class DataSeeder implements CommandLineRunner {
             return;
         }
 
-        List<Movie> nowShowingMovies = movieRepository.findAll().stream()
-                .filter(m -> m.getStatus() == MovieStatus.NOW_SHOWING)
+        // Seed showtime cho movies NOW_SHOWING và COMING_SOON
+        List<Movie> availableMovies = movieRepository.findAll().stream()
+                .filter(m -> m.getStatus() == MovieStatus.NOW_SHOWING || 
+                            m.getStatus() == MovieStatus.COMING_SOON)
                 .toList();
 
-        if (nowShowingMovies.isEmpty()) {
-            log.warn("Không có movie NOW_SHOWING, bỏ qua seed showtimes");
+        if (availableMovies.isEmpty()) {
+            log.warn("Không có movie NOW_SHOWING hoặc COMING_SOON, bỏ qua seed showtimes");
             return;
         }
-
-        // Mục tiêu 30 suất chiếu (đúng roadmap 20-30)
-        int target = 30;
-        List<Showtime> showtimes = new ArrayList<>(target);
+        
+        log.info("Tìm thấy {} movies để seed showtime (NOW_SHOWING + COMING_SOON)", availableMovies.size());
 
         LocalDate today = LocalDate.now();
+        int daySpan = 14; // Seed trong 14 ngày
+        int showsPerMoviePerDay = 8; // Mỗi phim 8 suất/ngày
+        List<Showtime> showtimes = new ArrayList<>();
+
+        // Time slots trong ngày (từ 9h đến 22h)
         List<LocalTime> baseSlots = List.of(
                 LocalTime.of(9, 0),
-                LocalTime.of(11, 30),
-                LocalTime.of(14, 0),
+                LocalTime.of(10, 30),
+                LocalTime.of(12, 0),
+                LocalTime.of(13, 30),
+                LocalTime.of(15, 0),
                 LocalTime.of(16, 30),
-                LocalTime.of(19, 0),
-                LocalTime.of(21, 30)
+                LocalTime.of(18, 0),
+                LocalTime.of(19, 30),
+                LocalTime.of(21, 0),
+                LocalTime.of(22, 30)
         );
 
-        int daySpan = 7; // rải trong 7 ngày để có nhiều showtime hơn
         LocalDateTime now = LocalDateTime.now();
 
-        outer:
-        for (int d = 0; d < daySpan; d++) {
-            LocalDate date = today.plusDays(d);
-
-            // Shuffle để phân bổ đa dạng
-            List<Room> shuffledRooms = new ArrayList<>(rooms);
-            Collections.shuffle(shuffledRooms, random);
-
-            for (Room room : shuffledRooms) {
-                // Mỗi phòng 1-2 suất/ngày
-                int perRoomPerDay = 1 + random.nextInt(2);
-                List<LocalTime> slots = new ArrayList<>(baseSlots);
-                Collections.shuffle(slots, random);
-
-                for (int i = 0; i < Math.min(perRoomPerDay, slots.size()); i++) {
-                    if (showtimes.size() >= target) break outer;
-
-                    Movie movie = nowShowingMovies.get(random.nextInt(nowShowingMovies.size()));
-                    int durationMinutes = movie.getDuration() != null ? movie.getDuration() : (100 + random.nextInt(60));
-
-                    LocalTime slot = slots.get(i);
-                    // random +/- 0-10 phút để nhìn tự nhiên
-                    int offset = random.nextBoolean() ? random.nextInt(11) : -random.nextInt(11);
-                    LocalDateTime start = date.atTime(slot).plusMinutes(offset);
+        // Với mỗi phim, seed showtime trong nhiều ngày
+        for (Movie movie : availableMovies) {
+            int durationMinutes = movie.getDuration() != null ? movie.getDuration() : 120;
+            
+            for (int d = 0; d < daySpan; d++) {
+                LocalDate date = today.plusDays(d);
+                
+                // Bỏ qua ngày quá khứ (trừ hôm nay nếu còn thời gian)
+                if (d == 0 && date.atTime(LocalTime.of(22, 0)).isBefore(now)) {
+                    continue; // Hôm nay đã quá muộn
+                }
+                
+                // Mỗi phim cần 8 suất chiếu mỗi ngày
+                int showsCreatedForThisMovieToday = 0;
+                List<Room> shuffledRooms = new ArrayList<>(rooms);
+                Collections.shuffle(shuffledRooms, random);
+                
+                // Thử tạo showtime cho phim này trong ngày này
+                for (Room room : shuffledRooms) {
+                    if (showsCreatedForThisMovieToday >= showsPerMoviePerDay) {
+                        break; // Đã đủ 8 suất cho phim này hôm nay
+                    }
                     
-                    // Chỉ tạo showtime trong tương lai (ít nhất 30 phút từ bây giờ)
-                    if (start.isBefore(now.plusMinutes(30))) {
-                        // Nếu là hôm nay và showtime đã qua, skip
-                        if (date.equals(today)) {
+                    // Thử các time slot
+                    List<LocalTime> availableSlots = new ArrayList<>(baseSlots);
+                    Collections.shuffle(availableSlots, random);
+                    
+                    for (LocalTime slot : availableSlots) {
+                        if (showsCreatedForThisMovieToday >= showsPerMoviePerDay) {
+                            break;
+                        }
+                        
+                        LocalDateTime start = date.atTime(slot);
+                        
+                        // Bỏ qua nếu quá khứ (với buffer 30 phút)
+                        if (start.isBefore(now.plusMinutes(30))) {
                             continue;
                         }
-                        // Nếu là ngày khác nhưng vẫn ở quá khứ (không nên xảy ra), skip
-                        if (start.isBefore(now)) {
+                        
+                        // Tính end time (thêm 10 phút buffer dọn phòng)
+                        LocalDateTime end = start.plusMinutes(durationMinutes + 10L);
+                        
+                        // Không để quá trễ (sau 23:30)
+                        if (end.toLocalTime().isAfter(LocalTime.of(23, 30))) {
                             continue;
                         }
+                        
+                        // Check conflict trong room
+                        boolean hasConflict = !showtimeRepository.findConflictingShowtimes(room.getId(), start, end).isEmpty();
+                        if (hasConflict) {
+                            continue;
+                        }
+                        
+                        // Tạo showtime
+                        Showtime showtime = new Showtime();
+                        showtime.setMovie(movie);
+                        showtime.setRoom(room);
+                        showtime.setStartTime(start);
+                        showtime.setEndTime(end);
+                        
+                        // Giá vé cố định: 75,000 VNĐ cho tất cả showtime
+                        BigDecimal fixedPrice = BigDecimal.valueOf(75000);
+                        showtime.setPrice(fixedPrice);
+                        
+                        showtimes.add(showtime);
+                        showsCreatedForThisMovieToday++;
                     }
-                    // thêm 10 phút buffer dọn phòng
-                    LocalDateTime end = start.plusMinutes(durationMinutes + 10L);
-
-                    // Không để quá trễ (sau 23:59)
-                    if (end.toLocalTime().isAfter(LocalTime.of(23, 59))) {
-                        continue;
-                    }
-
-                    // Check conflict trong room (dùng query sẵn có)
-                    boolean hasConflict = !showtimeRepository.findConflictingShowtimes(room.getId(), start, end).isEmpty();
-                    if (hasConflict) {
-                        continue;
-                    }
-
-                    Showtime showtime = new Showtime();
-                    showtime.setMovie(movie);
-                    showtime.setRoom(room);
-                    showtime.setStartTime(start);
-                    showtime.setEndTime(end);
-
-                    // Giá vé: 65k - 150k (IMAX/VIP rooms thường đắt hơn)
-                    BigDecimal basePrice = BigDecimal.valueOf(65000 + random.nextInt(85001));
-                    if (room.getRoomNumber() != null && room.getRoomNumber().toUpperCase().contains("IMAX")) {
-                        basePrice = basePrice.add(BigDecimal.valueOf(50000));
-                    }
-                    showtime.setPrice(basePrice);
-
-                    showtimes.add(showtime);
                 }
             }
         }
@@ -501,7 +900,8 @@ public class DataSeeder implements CommandLineRunner {
         }
 
         showtimeRepository.saveAll(showtimes);
-        log.info("Đã seed {} showtimes", showtimes.size());
+        log.info("Đã seed {} showtimes (trung bình {} suất/phim/ngày trong {} ngày)", 
+                showtimes.size(), showsPerMoviePerDay, daySpan);
     }
     
     /**
@@ -715,6 +1115,63 @@ public class DataSeeder implements CommandLineRunner {
         
         log.info("Đã seed {} bookings ({} PAID + {} PENDING + {} CANCELLED)",
                 bookings.size(), paidCount, pendingCount, cancelledCount);
+    }
+
+    /**
+     * Seed Reviews: 2-5 review mỗi movie
+     */
+    private void seedReviews() {
+        log.info("Đang seed Reviews...");
+
+        List<Movie> movies = movieRepository.findAll();
+        List<User> users = userRepository.findAll();
+
+        if (movies.isEmpty() || users.isEmpty()) {
+            log.warn("Không có movie hoặc user, bỏ qua seed reviews");
+            return;
+        }
+
+        if (reviewRepository.count() > 0) {
+            log.info("Reviews đã có dữ liệu ({}), bỏ qua seed.", reviewRepository.count());
+            return;
+        }
+
+        List<String> reviewComments = List.of(
+                "Great movie! Highly recommended.",
+                "Amazing storyline and acting.",
+                "One of the best movies I've seen.",
+                "Good but could be better.",
+                "Not my favorite, but decent.",
+                "Excellent cinematography!",
+                "The plot was a bit confusing.",
+                "Loved every minute of it!",
+                "Great for a family watch.",
+                "Action-packed and thrilling!"
+        );
+
+        List<Review> reviewsToSeed = new ArrayList<>();
+
+        for (Movie movie : movies) {
+            int numReviews = random.nextInt(4) + 2; // 2-5 reviews
+            List<User> shuffledUsers = new ArrayList<>(users);
+            Collections.shuffle(shuffledUsers, random);
+            List<User> selectedUsers = shuffledUsers.subList(0, Math.min(numReviews, shuffledUsers.size()));
+
+            for (User user : selectedUsers) {
+                Review review = new Review();
+                review.setMovie(movie);
+                String authorName = user.getFullName() != null && !user.getFullName().isBlank()
+                        ? user.getFullName()
+                        : user.getUsername();
+                review.setAuthorName(authorName);
+                review.setRating(3 + random.nextInt(3)); // 3-5 stars
+                review.setComment(reviewComments.get(random.nextInt(reviewComments.size())));
+                reviewsToSeed.add(review);
+            }
+        }
+
+        reviewRepository.saveAll(reviewsToSeed);
+        log.info("Đã seed {} reviews cho {} movies", reviewsToSeed.size(), movies.size());
     }
     
     /**
