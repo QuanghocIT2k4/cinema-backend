@@ -1,14 +1,14 @@
 package com.cinema.config;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Primary;
+import org.springframework.boot.context.event.ApplicationEnvironmentPreparedEvent;
+import org.springframework.context.ApplicationListener;
+import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.env.MapPropertySource;
+import org.springframework.stereotype.Component;
 
-import javax.sql.DataSource;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Configuration để tự động convert DATABASE_URL từ Render (postgresql://...)
@@ -16,31 +16,35 @@ import javax.sql.DataSource;
  * 
  * Render cung cấp: postgresql://user:pass@host/dbname
  * Spring Boot cần: jdbc:postgresql://user:pass@host/dbname
+ * 
+ * Class này sẽ tự động thêm jdbc: prefix nếu thiếu
  */
-@Configuration
+@Component
 @Slf4j
-public class DatabaseConfig {
+public class DatabaseConfig implements ApplicationListener<ApplicationEnvironmentPreparedEvent> {
 
-    @Value("${spring.datasource.url:}")
-    private String datasourceUrl;
-
-    @Bean
-    @Primary
-    @ConfigurationProperties("spring.datasource")
-    public DataSourceProperties dataSourceProperties() {
-        DataSourceProperties properties = new DataSourceProperties();
-        String jdbcUrl = convertToJdbcUrl(datasourceUrl);
-        properties.setUrl(jdbcUrl);
-        log.info("Database URL converted: {} -> {}", 
-                datasourceUrl != null ? datasourceUrl.replaceAll(":[^:@]+@", ":****@") : "null",
-                jdbcUrl != null ? jdbcUrl.replaceAll(":[^:@]+@", ":****@") : "null");
-        return properties;
-    }
-
-    @Bean
-    @Primary
-    public DataSource dataSource(DataSourceProperties properties) {
-        return properties.initializeDataSourceBuilder().build();
+    @Override
+    public void onApplicationEvent(ApplicationEnvironmentPreparedEvent event) {
+        ConfigurableEnvironment environment = event.getEnvironment();
+        String databaseUrl = environment.getProperty("DATABASE_URL");
+        
+        if (databaseUrl != null && !databaseUrl.isEmpty()) {
+            String jdbcUrl = convertToJdbcUrl(databaseUrl);
+            
+            if (!jdbcUrl.equals(databaseUrl)) {
+                log.info("Converting DATABASE_URL: {} -> {}", 
+                        databaseUrl.replaceAll(":[^:@]+@", ":****@"),
+                        jdbcUrl.replaceAll(":[^:@]+@", ":****@"));
+                
+                // Override spring.datasource.url với JDBC URL
+                Map<String, Object> properties = new HashMap<>();
+                properties.put("spring.datasource.url", jdbcUrl);
+                
+                environment.getPropertySources().addFirst(
+                        new MapPropertySource("database-url-override", properties)
+                );
+            }
+        }
     }
 
     /**
