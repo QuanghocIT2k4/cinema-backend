@@ -24,6 +24,7 @@ EXPOSE 8080
 
 # Run app với production profile
 # Railway tự động set PORT env var
+# SPRING_PROFILES_ACTIVE sẽ được set từ Railway env vars (set trong Variables tab)
 ENTRYPOINT ["java", "-jar", "app.jar"]
 
 
