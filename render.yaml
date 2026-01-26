@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: cinema-backend
+    env: docker
+    region: singapore
+    plan: free
+    buildCommand: ""  # Render tự động detect Dockerfile
+    startCommand: ""  # Render tự động detect từ Dockerfile
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: production
+      - key: JWT_SECRET
+        value: abcdefghijklmnopqrstuvwxyz1234567890
+      - key: JWT_EXPIRATION_MS
+        value: 86400000
+      - key: ALLOWED_ORIGINS
+        value: https://cinema-web-six.vercel.app  # Update với URL Vercel của bạn
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cinema-db
+          property: connectionString
+
+databases:
+  - name: cinema-db
+    databaseName: cinema_db
+    user: cinema_user
+    plan: free
+    region: singapore
+
