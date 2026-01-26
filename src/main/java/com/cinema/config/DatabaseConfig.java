@@ -2,12 +2,11 @@ package com.cinema.config;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
-import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.annotation.Order;
+import com.zaxxer.hikari.HikariDataSource;
 
 import javax.sql.DataSource;
 
@@ -42,36 +41,34 @@ public class DatabaseConfig {
 
     @Bean
     @Primary
-    @ConfigurationProperties("spring.datasource")
-    public DataSourceProperties dataSourceProperties() {
-        DataSourceProperties properties = new DataSourceProperties();
-        
-        // CHỈ override khi có env vars từ Railway/Production
-        // Local sẽ dùng default từ application.properties
+    public DataSource dataSource() {
+        // Build URL từ env vars
         String finalUrl = buildDatabaseUrl();
         
+        // Nếu có DATABASE_URL hoặc MYSQL_URL → build DataSource từ đầu (override hoàn toàn)
         if (finalUrl != null && !finalUrl.isEmpty()) {
-            // Có env vars → override
             String driverClassName = detectDriverFromUrl(finalUrl);
-            properties.setUrl(finalUrl);
-            // QUAN TRỌNG: Phải set driver trước khi Spring Boot init
-            properties.setDriverClassName(driverClassName);
+            
+            HikariDataSource dataSource = new HikariDataSource();
+            dataSource.setJdbcUrl(finalUrl);
+            dataSource.setDriverClassName(driverClassName);
+            
+            // Set pool config
+            dataSource.setMaximumPoolSize(10);
+            dataSource.setMinimumIdle(2);
+            dataSource.setConnectionTimeout(30000);
+            
             log.info("=== Using Render/Railway/Production database config ===");
             log.info("Database URL: {}", finalUrl.replaceAll(":[^:@]+@", ":****@"));
             log.info("Auto-detected driver: {}", driverClassName);
-            log.info("=== Overriding driver from application.properties ===");
-        } else {
-            // Không có env vars → dùng default từ application.properties
-            log.info("Using local database config from application.properties");
+            log.info("=== Overriding datasource from application.properties ===");
+            
+            return dataSource;
         }
         
-        return properties;
-    }
-
-    @Bean
-    @Primary
-    public DataSource dataSource(DataSourceProperties properties) {
-        return properties.initializeDataSourceBuilder().build();
+        // Không có env vars → dùng default từ Spring Boot auto-config
+        log.info("Using default Spring Boot datasource configuration from application.properties");
+        return null; // Spring Boot sẽ tự động tạo DataSource từ properties
     }
 
     /**
